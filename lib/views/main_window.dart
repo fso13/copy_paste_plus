@@ -99,12 +99,6 @@ class _MainWindowState extends State<MainWindow> {
         ],
       ),
       body: _buildBody(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _clipboardManager.addItem(content: 'Тест ${DateTime.now().second}');
-        },
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
@@ -118,7 +112,7 @@ class _MainWindowState extends State<MainWindow> {
             SizedBox(height: 16),
             Text('История буфера обмена пуста'),
             SizedBox(height: 8),
-            Text('Скопируйте текст или нажмите + для теста'),
+            Text('Скопируйте текст'),
           ],
         ),
       );

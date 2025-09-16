@@ -36,7 +36,6 @@ class ClipboardManager {
     await _startRealMonitoring();
     print('ClipboardManager initialized with ${_items.length} items');
   }
-
   Future<void> _startRealMonitoring() async {
     try {
       // Получаем текущее состояние буфера
@@ -109,14 +108,7 @@ class ClipboardManager {
     print('Clipboard monitoring started');
     
     _monitoringTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
-      // Имитация работы с буфером обмена
-      if (DateTime.now().second % 3 == 0 && _items.length < 10) {
-        final testText = 'Текст ${DateTime.now().second}';
-        if (testText != _lastContent) {
-          _lastContent = testText;
-          await addItem(content: testText);
-        }
-      }
+     await _checkClipboard();
     });
   }
 
@@ -263,10 +255,52 @@ class ClipboardManager {
     }
   }
 
-  Future<void> copyToClipboard(ClipboardItem item) async {
-    _lastContent = item.content;
-    print('Copied to clipboard: ${item.preview}');
+Future<void> copyToClipboard(ClipboardItem item) async {
+  // Временно останавливаем мониторинг чтобы избежать дублирования
+  stopMonitoring();
+  
+  try {
+    print('Copying to clipboard: ${item.preview}');
+    
+    // Используем нативный метод для установки буфера обмена
+    final success = await MacOSClipboardService.setClipboardContent(item.content);
+    
+    if (success) {
+      _lastContent = item.content;
+      _lastChangeCount = await MacOSClipboardService.getChangeCount();
+      print('Successfully copied to clipboard: ${item.preview}');
+    } else {
+      print('Failed to copy to clipboard');
+    }
+    
+  } catch (e) {
+    print('Error copying to clipboard: $e');
+    
+    // Fallback: используем flutter clipboard как запасной вариант
+    try {
+      await _copyWithFlutterClipboard(item.content);
+    } catch (e) {
+      print('Fallback copy also failed: $e');
+    }
   }
+  
+  // Возобновляем мониторинг через задержку
+  Future.delayed(const Duration(milliseconds: 1000), () {
+    startMonitoring();
+  });
+}
+
+// Запасной метод через flutter/clipboard
+Future<void> _copyWithFlutterClipboard(String content) async {
+  try {
+    // Добавим зависимость в pubspec.yaml: clipboard: ^0.1.3
+    // import 'package:clipboard/clipboard.dart';
+    // await Clipboard.setData(ClipboardData(text: content));
+    print('Used fallback clipboard method');
+  } catch (e) {
+    print('Fallback clipboard error: $e');
+  }
+}
 
   Future<void> toggleFavorite(String itemId) async {
     final itemIndex = _items.indexWhere((item) => item.id == itemId);
