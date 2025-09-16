@@ -1,7 +1,7 @@
-// lib/services/system_tray_service.dart
 import 'dart:async';
+
 import 'package:system_tray/system_tray.dart';
-import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 
 class SystemTrayService {
   final SystemTray _systemTray = SystemTray();
@@ -11,48 +11,55 @@ class SystemTrayService {
   Stream<void> get onShowWindow => _showWindowController.stream;
 
   Future<void> initialize() async {
-    final AppWindow appWindow = AppWindow();
-    
-    // Иконка для трея
-    final String iconPath = 'assets/AppIcons/appstore.png';
-    
-    await _systemTray.initSystemTray(
-      iconPath: iconPath,
-      toolTip: 'Clipboard Manager',
-    );
+    try {
+      // Инициализируем системный трей
+      await _systemTray.initSystemTray(
+        iconPath: 'assets/AppIcons/appstore.png', // Убедитесь что файл существует в assets/
+        toolTip: 'Clipboard Manager',
+      );
 
-    // Создание меню
-    await _menu.buildFrom([
-      MenuItemLabel(
-        label: 'Показать историю',
-        onClicked: (menuItem) {
+      // Создаем меню
+      await _menu.buildFrom([
+        MenuItemLabel(
+          label: 'Показать Clipboard Manager',
+          onClicked: (menuItem) {
+            _showWindowController.add(null);
+          },
+        ),
+        MenuSeparator(),
+        MenuItemLabel(
+          label: 'Настройки',
+          onClicked: (menuItem) {
+            _showWindowController.add(null);
+            // Открываем настройки через задержку
+            Future.delayed(Duration(milliseconds: 100), () {
+              _showWindowController.add(null); // Двойной вызов для настройок
+            });
+          },
+        ),
+        MenuSeparator(),
+        MenuItemLabel(
+          label: 'Выход',
+          onClicked: (menuItem) {
+            windowManager.close();
+          },
+        ),
+      ]);
+
+      // Устанавливаем контекстное меню
+      await _systemTray.setContextMenu(_menu);
+
+      // Обработчик клика по иконке в трее
+      _systemTray.registerSystemTrayEventHandler((eventName) {
+        if (eventName == 'click') {
           _showWindowController.add(null);
-        },
-      ),
-      MenuItemLabel(
-        label: 'Настройки',
-        onClicked: (menuItem) {
-          // Открыть настройки
-        },
-      ),
-      MenuSeparator(),
-      MenuItemLabel(
-        label: 'Выход',
-        onClicked: (menuItem) {
-          SystemNavigator.pop();
-        },
-      ),
-    ]);
+        }
+      });
 
-    await _systemTray.setContextMenu(_menu);
-    
-    _systemTray.registerSystemTrayEventHandler((eventName) {
-      if (eventName == kSystemTrayEventClick) {
-        _showWindowController.add(null);
-      } else if (eventName == kSystemTrayEventRightClick) {
-        _systemTray.popUpContextMenu();
-      }
-    });
+      print('System tray initialized successfully');
+    } catch (e) {
+      print('Error initializing system tray: $e');
+    }
   }
 
   void dispose() {

@@ -1,23 +1,24 @@
-// lib/main.dart
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/hotkey_service.dart';
 import 'package:copy_paste_plus/services/system_tray_service.dart';
 import 'package:copy_paste_plus/views/main_window.dart';
 import 'package:copy_paste_plus/views/settings_window.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'global.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   await windowManager.ensureInitialized();
+  
   WindowOptions windowOptions = const WindowOptions(
     size: Size(400, 600),
     center: true,
     skipTaskbar: true,
     titleBarStyle: TitleBarStyle.hidden,
   );
+
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setAsFrameless();
     await windowManager.hide();
@@ -27,15 +28,13 @@ void main() async {
 }
 
 class ClipboardManagerApp extends StatefulWidget {
-  const ClipboardManagerApp({super.key});
-
   @override
   _ClipboardManagerAppState createState() => _ClipboardManagerAppState();
 }
 
 class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
   final SystemTrayService _systemTrayService = SystemTrayService();
-  final ClipboardManager _clipboardManager = ClipboardManager();
+  final ClipboardManager _clipboardManager = clipboardManager; // Синглтон
   final HotkeyService _hotkeyService = HotkeyService();
   
   bool _showWindow = false;
@@ -44,53 +43,47 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
   @override
   void initState() {
     super.initState();
+    print('App initState');
     _initializeServices();
   }
 
   Future<void> _initializeServices() async {
     await _systemTrayService.initialize();
-    await _clipboardManager.initialize();
+    await _hotkeyService.initialize(_toggleWindow);
     
-    await _hotkeyService.initialize(() {
-      _handleHotkeyPress();
-    });
-
     _systemTrayService.onShowWindow.listen((_) {
+      print('Show window event from system tray');
       _toggleWindow();
     });
+
+    print('Services initialized');
   }
 
-  void _handleHotkeyPress() async {
-    try {
-      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData != null && clipboardData.text != null && clipboardData.text!.isNotEmpty) {
-        await _clipboardManager.forceAddItem(clipboardData.text!);
-      }
-    } catch (e) {
-      print('Error getting clipboard data on hotkey: $e');
-    }
-
-    _toggleWindow();
-  }
-
-  void _toggleWindow() async {
+  void _toggleWindow() {
+    print('Toggling window. Current state: $_showWindow');
+    
     setState(() {
       _showWindow = !_showWindow;
       _showSettings = false;
     });
 
     if (_showWindow) {
-      await windowManager.show();
-      await windowManager.focus();
+      print('Showing window...');
+      windowManager.show();
+      windowManager.focus();
       
-      // Обновляем данные при открытии окна
+      // Гарантируем что контроллеры активны
+      _clipboardManager.ensureControllersActive();
       _clipboardManager.refreshStreams();
+      
     } else {
-      await windowManager.hide();
+      print('Hiding window...');
+      windowManager.hide();
     }
   }
 
   void _openSettings() {
+    print('Opening settings...');
     setState(() {
       _showSettings = true;
       _showWindow = true;
@@ -100,42 +93,35 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
   }
 
   void _closeSettings() {
+    print('Closing settings...');
     setState(() {
       _showSettings = false;
     });
   }
 
-  Widget _buildCurrentScreen() {
-    if (_showSettings) {
-      return SettingsWindow(
-        onClose: _closeSettings,
-      );
-    } else {
-      return MainWindow(
-        onClose: _toggleWindow,
-        onOpenSettings: _openSettings,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    print('Building app. Show window: $_showWindow, Show settings: $_showSettings');
+    
     return MaterialApp(
-      title: 'Clipboard Manager',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      home: _showWindow ? _buildCurrentScreen() : Container(),
+      home: _showWindow 
+          ? (_showSettings 
+              ? SettingsWindow(onClose: _closeSettings)
+              : MainWindow(
+                  onClose: _toggleWindow,
+                  onOpenSettings: _openSettings,
+                ))
+          : Container(),
       debugShowCheckedModeBanner: false,
     );
   }
 
   @override
   void dispose() {
+    print('App dispose');
     _systemTrayService.dispose();
     _hotkeyService.dispose();
-    _clipboardManager.dispose();
+    // Не вызываем dispose у ClipboardManager чтобы сохранить состояние
     super.dispose();
   }
 }

@@ -1,4 +1,3 @@
-// lib/services/hotkey_service.dart
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 
@@ -12,19 +11,11 @@ class HotkeyService {
     modifiers: [HotKeyModifier.meta, HotKeyModifier.shift],
   );
 
-  bool _isInitialized = false;
-  Function()? _currentCallback;
+  Function()? _onHotkeyPressed;
 
   Future<void> initialize(Function() onHotkeyPressed) async {
-    _currentCallback = onHotkeyPressed;
-    
-    if (_isInitialized) {
-      await _reRegisterHotkey();
-      return;
-    }
-    
+    _onHotkeyPressed = onHotkeyPressed;
     await _registerHotkey();
-    _isInitialized = true;
   }
 
   Future<void> _registerHotkey() async {
@@ -35,44 +26,32 @@ class HotkeyService {
         _currentHotKey,
         keyDownHandler: (hotKey) {
           print('Hotkey pressed: ${_formatHotkey(_currentHotKey)}');
-          _currentCallback?.call();
+          _onHotkeyPressed?.call();
         },
       );
       print('Hotkey registered: ${_formatHotkey(_currentHotKey)}');
     } catch (e) {
       print('Error registering hotkey: $e');
+      // Повторяем попытку через секунду
+      Future.delayed(Duration(seconds: 1), _registerHotkey);
     }
-  }
-
-  Future<void> _reRegisterHotkey() async {
-    await hotKeyManager.unregisterAll();
-    await _registerHotkey();
   }
 
   Future<void> updateHotkey(HotKey newHotkey) async {
     print('Updating hotkey from ${_formatHotkey(_currentHotKey)} to ${_formatHotkey(newHotkey)}');
     _currentHotKey = newHotkey;
-    await _reRegisterHotkey();
+    await _registerHotkey();
   }
 
   HotKey get currentHotkey => _currentHotKey;
 
-  Future<void> temporaryUnregister() async {
-    await hotKeyManager.unregisterAll();
-    print('Hotkey temporarily unregistered');
-  }
-
-  Future<void> reRegister() async {
-    await _reRegisterHotkey();
-  }
-
   String _formatHotkey(HotKey hotkey) {
     final modifiers = hotkey.modifiers!.map((modifier) {
       switch (modifier) {
-        case KeyModifier.control: return 'Ctrl';
-        case KeyModifier.alt: return 'Alt';
-        case KeyModifier.shift: return 'Shift';
-        case KeyModifier.meta: return 'Cmd';
+        case HotKeyModifier.control: return 'Ctrl';
+        case HotKeyModifier.alt: return 'Alt';
+        case HotKeyModifier.shift: return 'Shift';
+        case HotKeyModifier.meta: return 'Cmd';
         default: return '';
       }
     }).where((element) => element.isNotEmpty).join('+');
@@ -83,8 +62,5 @@ class HotkeyService {
 
   void dispose() {
     hotKeyManager.unregisterAll();
-    _isInitialized = false;
-    _currentCallback = null;
-    print('Hotkey service disposed');
   }
 }

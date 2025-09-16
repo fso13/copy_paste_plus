@@ -1,35 +1,106 @@
-// lib/services/clipboard_manager.dart
 import 'dart:async';
-import 'package:flutter/services.dart';
+import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/clipboard_item.dart';
 
 class ClipboardManager {
   static final ClipboardManager _instance = ClipboardManager._internal();
   factory ClipboardManager() => _instance;
-  ClipboardManager._internal();
-
+  
   final List<ClipboardItem> _items = [];
   final List<ClipboardItem> _favorites = [];
-  int _maxItems = 50;
+  int _maxItems = 28;
   String _lastContent = '';
+  int _lastChangeCount = 0;
   
-  final StreamController<List<ClipboardItem>> _itemsController = 
-      StreamController<List<ClipboardItem>>.broadcast();
-  final StreamController<List<ClipboardItem>> _favoritesController = 
-      StreamController<List<ClipboardItem>>.broadcast();
-
+  late StreamController<List<ClipboardItem>> _itemsController;
+  late StreamController<List<ClipboardItem>> _favoritesController;
+  
   Timer? _monitoringTimer;
   bool _isMonitoring = false;
+  StreamSubscription<String>? _clipboardSubscription;
 
-  Stream<List<ClipboardItem>> get itemsStream => _itemsController.stream;
-  Stream<List<ClipboardItem>> get favoritesStream => _favoritesController.stream;
+  ClipboardManager._internal() {
+    print('ClipboardManager singleton instance created');
+    _initializeControllers();
+    _initialize();
+  }
 
-  Future<void> initialize() async {
+  void _initializeControllers() {
+    _itemsController = StreamController<List<ClipboardItem>>.broadcast();
+    _favoritesController = StreamController<List<ClipboardItem>>.broadcast();
+  }
+
+  Future<void> _initialize() async {
     await _loadData();
-    startMonitoring();
+    await _startRealMonitoring();
     print('ClipboardManager initialized with ${_items.length} items');
   }
+
+  Future<void> _startRealMonitoring() async {
+    try {
+      // Получаем текущее состояние буфера
+      _lastChangeCount = await MacOSClipboardService.getChangeCount();
+      _lastContent = await MacOSClipboardService.getClipboardContent();
+      
+      // Запускаем нативный мониторинг
+      await MacOSClipboardService.startMonitoring();
+      
+      // Слушаем изменения через EventChannel
+      _clipboardSubscription = MacOSClipboardService.clipboardChanges.listen(
+        (content) async {
+          if (content.isNotEmpty && content != _lastContent) {
+            print('Clipboard change detected: $content');
+            _lastContent = content;
+            await addItem(content: content);
+          }
+        },
+        onError: (error) {
+          print('Native clipboard monitoring error: $error');
+          _startFallbackMonitoring();
+        }
+      );
+      
+      _isMonitoring = true;
+      print('Real clipboard monitoring started');
+      
+    } catch (e) {
+      print('Native clipboard monitoring not available: $e');
+      _startFallbackMonitoring();
+    }
+  }
+
+  void _startFallbackMonitoring() {
+    if (_isMonitoring) return;
+    
+    _isMonitoring = true;
+    print('Starting fallback clipboard monitoring');
+    
+    _monitoringTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+      await _checkClipboard();
+    });
+  }
+
+  Future<void> _checkClipboard() async {
+    try {
+      final currentChangeCount = await MacOSClipboardService.getChangeCount();
+      
+      if (currentChangeCount != _lastChangeCount) {
+        _lastChangeCount = currentChangeCount;
+        
+        final content = await MacOSClipboardService.getClipboardContent();
+        if (content.isNotEmpty && content != _lastContent) {
+          print('Clipboard change detected: $content');
+          _lastContent = content;
+          await addItem(content: content);
+        }
+      }
+    } catch (e) {
+      print('Error checking clipboard: $e');
+    }
+  }
+
+
 
   void startMonitoring() {
     if (_isMonitoring) return;
@@ -37,8 +108,15 @@ class ClipboardManager {
     _isMonitoring = true;
     print('Clipboard monitoring started');
     
-    _monitoringTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
-      _checkClipboard();
+    _monitoringTimer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
+      // Имитация работы с буфером обмена
+      if (DateTime.now().second % 3 == 0 && _items.length < 10) {
+        final testText = 'Текст ${DateTime.now().second}';
+        if (testText != _lastContent) {
+          _lastContent = testText;
+          await addItem(content: testText);
+        }
+      }
     });
   }
 
@@ -48,76 +126,146 @@ class ClipboardManager {
     print('Clipboard monitoring stopped');
   }
 
-  Future<void> _checkClipboard() async {
-    try {
-      final text = await Clipboard.getData(Clipboard.kTextPlain);
-      if (text != null && text.text != null && text.text!.isNotEmpty) {
-        final currentContent = text.text!;
-        if (currentContent != _lastContent) {
-          print('New clipboard content detected: ${_truncateText(currentContent)}');
-          _lastContent = currentContent;
-          await addItem(
-            content: currentContent,
-            type: ClipboardContentType.text,
-          );
-        }
-      }
-    } catch (e) {
-      print('Error checking clipboard: $e');
-    }
-  }
-
-  String _truncateText(String text) {
-    const maxLength = 60;
-    if (text.length <= maxLength) return text;
-    return '${text.substring(0, maxLength)}...';
-  }
-
-  Future<void> addItem({
-    required String content,
-    required ClipboardContentType type,
-    String? additionalData,
-  }) async {
-    // Проверяем на дубликаты (последний элемент)
+  Future<void> addItem({required String content}) async {
+    if (content.isEmpty) return;
     if (_items.isNotEmpty && _items.first.content == content) {
-      print('Duplicate content, skipping');
       return;
     }
 
     final newItem = ClipboardItem(
       content: content,
-      type: type,
       timestamp: DateTime.now(),
-      additionalData: additionalData,
     );
 
     _items.insert(0, newItem);
 
-    // Ограничение количества элементов
     if (_items.length > _maxItems) {
       _items.removeRange(_maxItems, _items.length);
     }
 
-    _itemsController.add(List.from(_items));
     await _saveData();
+    refreshStreams();
     
     print('Item added to history. Total items: ${_items.length}');
   }
 
-  Future<void> forceAddItem(String content) async {
-    if (content.isEmpty) return;
+  void refreshStreams() {
+    if (_itemsController.isClosed) {
+      print('ItemsController is closed, recreating...');
+      _recreateControllers();
+      return;
+    }
+
+    _itemsController.add([..._items]);
+    _favoritesController.add([..._favorites]);
     
-    _lastContent = content;
-    await addItem(
-      content: content,
-      type: ClipboardContentType.text,
-    );
+    print('Streams refreshed with ${_items.length} items');
   }
 
-  void refreshStreams() {
-    _itemsController.add(List.from(_items));
-    _favoritesController.add(List.from(_favorites));
-    print('Streams refreshed');
+  void _recreateControllers() {
+    if (!_itemsController.isClosed) _itemsController.close();
+    if (!_favoritesController.isClosed) _favoritesController.close();
+    
+    _itemsController = StreamController<List<ClipboardItem>>.broadcast();
+    _favoritesController = StreamController<List<ClipboardItem>>.broadcast();
+    
+    // Immediately add current data to new streams
+    _itemsController.add([..._items]);
+    _favoritesController.add([..._favorites]);
+  }
+
+  Future<void> ensureControllersActive() async {
+    if (_itemsController.isClosed || _favoritesController.isClosed) {
+      print('Controllers are closed, recreating...');
+      _recreateControllers();
+    }
+  }
+
+  Future<void> reloadData() async {
+    await _loadData();
+    refreshStreams();
+    print('Data reloaded. Items: ${_items.length}');
+  }
+
+  Future<void> _saveData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      final itemsData = _items.map((item) => 
+        '${item.id}|${item.content.replaceAll('|', '_')}|${item.timestamp.millisecondsSinceEpoch}|${item.isFavorite}'
+      ).toList();
+      
+      await prefs.setStringList('clipboard_items', itemsData);
+      
+      final favoritesData = _favorites.map((item) => 
+        '${item.id}|${item.content.replaceAll('|', '_')}|${item.timestamp.millisecondsSinceEpoch}|${item.isFavorite}'
+      ).toList();
+      
+      await prefs.setStringList('favorites', favoritesData);
+      await prefs.setInt('max_items', _maxItems);
+      
+      print('Data saved successfully');
+    } catch (e) {
+      print('Error saving data: $e');
+    }
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      final itemsData = prefs.getStringList('clipboard_items') ?? [];
+      _items.clear();
+      
+      for (final itemStr in itemsData) {
+        try {
+          final parts = itemStr.split('|');
+          if (parts.length == 4) {
+            final content = parts[1].replaceAll('_', '|');
+            _items.add(ClipboardItem(
+              id: parts[0],
+              content: content,
+              timestamp: DateTime.fromMillisecondsSinceEpoch(int.parse(parts[2])),
+              isFavorite: parts[3] == 'true',
+            ));
+          }
+        } catch (e) {
+          print('Error loading item: $e');
+        }
+      }
+      
+      final favoritesData = prefs.getStringList('favorites') ?? [];
+      _favorites.clear();
+      
+      for (final favoriteStr in favoritesData) {
+        try {
+          final parts = favoriteStr.split('|');
+          if (parts.length == 4) {
+            final content = parts[1].replaceAll('_', '|');
+            _favorites.add(ClipboardItem(
+              id: parts[0],
+              content: content,
+              timestamp: DateTime.fromMillisecondsSinceEpoch(int.parse(parts[2])),
+              isFavorite: parts[3] == 'true',
+            ));
+          }
+        } catch (e) {
+          print('Error loading favorite: $e');
+        }
+      }
+      
+      _maxItems = prefs.getInt('max_items') ?? 28;
+      _items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      
+      print('Data loaded: ${_items.length} items, ${_favorites.length} favorites');
+    } catch (e) {
+      print('Error loading data: $e');
+    }
+  }
+
+  Future<void> copyToClipboard(ClipboardItem item) async {
+    _lastContent = item.content;
+    print('Copied to clipboard: ${item.preview}');
   }
 
   Future<void> toggleFavorite(String itemId) async {
@@ -127,196 +275,50 @@ class ClipboardManager {
       
       if (_items[itemIndex].isFavorite) {
         _favorites.add(_items[itemIndex]);
-        print('Item added to favorites');
       } else {
         _favorites.removeWhere((item) => item.id == itemId);
-        print('Item removed from favorites');
       }
 
-      _itemsController.add(List.from(_items));
-      _favoritesController.add(List.from(_favorites));
       await _saveData();
-    }
-  }
-
-  Future<void> copyToClipboard(ClipboardItem item) async {
-    // Временно останавливаем мониторинг чтобы избежать дублирования
-    stopMonitoring();
-    
-    try {
-      await Clipboard.setData(ClipboardData(text: item.content));
-      _lastContent = item.content;
-      print('Copied to clipboard: ${_truncateText(item.content)}');
-    } catch (e) {
-      print('Error copying to clipboard: $e');
-    }
-    
-    // Возобновляем мониторинг через задержку
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      startMonitoring();
-    });
-  }
-
-  Future<void> removeItem(String itemId) async {
-    final itemIndex = _items.indexWhere((item) => item.id == itemId);
-    if (itemIndex != -1) {
-      final removedItem = _items.removeAt(itemIndex);
-      
-      // Удаляем также из избранного если нужно
-      if (removedItem.isFavorite) {
-        _favorites.removeWhere((item) => item.id == itemId);
-      }
-
-      _itemsController.add(List.from(_items));
-      _favoritesController.add(List.from(_favorites));
-      await _saveData();
-      
-      print('Item removed from history');
-    }
-  }
-
-  Future<void> clearHistory() async {
-    _items.clear();
-    // Очищаем только историю, избранное сохраняем
-    _itemsController.add(List.from(_items));
-    await _saveData();
-    print('History cleared');
-  }
-
-  Future<void> clearAll() async {
-    _items.clear();
-    _favorites.clear();
-    _itemsController.add(List.from(_items));
-    _favoritesController.add(List.from(_favorites));
-    await _saveData();
-    print('All data cleared');
-  }
-
-  Future<void> _saveData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      final itemsJson = _items.map((item) => _mapToJsonString(item.toJson())).toList();
-      await prefs.setStringList('clipboard_items', itemsJson);
-      
-      final favoritesJson = _favorites.map((item) => _mapToJsonString(item.toJson())).toList();
-      await prefs.setStringList('favorites', favoritesJson);
-      
-      await prefs.setInt('max_items', _maxItems);
-      
-      print('Data saved successfully');
-    } catch (e) {
-      print('Error saving data: $e');
-    }
-  }
-
-  String _mapToJsonString(Map<String, dynamic> map) {
-    return map.entries.map((e) => '${e.key}:${e.value}').join(',');
-  }
-
-  Future<void> _loadData() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      
-      // Загрузка истории
-      final itemsData = prefs.getStringList('clipboard_items') ?? [];
-      _items.clear();
-      for (final itemJson in itemsData) {
-        try {
-          final decodedJson = _parseJsonString(itemJson);
-          final item = ClipboardItem.fromJson(decodedJson);
-          _items.add(item);
-        } catch (e) {
-          print('Error loading item: $e');
-        }
-      }
-      
-      // Загрузка избранного
-      final favoritesData = prefs.getStringList('favorites') ?? [];
-      _favorites.clear();
-      for (final favoriteJson in favoritesData) {
-        try {
-          final decodedJson = _parseJsonString(favoriteJson);
-          final item = ClipboardItem.fromJson(decodedJson);
-          _favorites.add(item);
-        } catch (e) {
-          print('Error loading favorite: $e');
-        }
-      }
-      
-      _maxItems = prefs.getInt('max_items') ?? 50;
-      
-      // Обновляем последний контент из последнего элемента
-      if (_items.isNotEmpty) {
-        _lastContent = _items.first.content;
-      }
-      
       refreshStreams();
-      print('Data loaded: ${_items.length} items, ${_favorites.length} favorites');
-    } catch (e) {
-      print('Error loading data: $e');
     }
-  }
-
-  Map<String, dynamic> _parseJsonString(String jsonString) {
-    final Map<String, dynamic> result = {};
-    final pairs = jsonString.split(',');
-    
-    for (final pair in pairs) {
-      final keyValue = pair.split(':');
-      if (keyValue.length == 2) {
-        final key = keyValue[0].trim();
-        final value = keyValue[1].trim();
-        
-        if (value == 'true') {
-          result[key] = true;
-        } else if (value == 'false') {
-          result[key] = false;
-        } else if (int.tryParse(value) != null) {
-          result[key] = int.parse(value);
-        } else if (double.tryParse(value) != null) {
-          result[key] = double.parse(value);
-        } else {
-          result[key] = value;
-        }
-      }
-    }
-    
-    return result;
   }
 
   void setMaxItems(int maxItems) {
     _maxItems = maxItems;
-    if (_items.length > _maxItems) {
-      _items.removeRange(_maxItems, _items.length);
-      _itemsController.add(List.from(_items));
-    }
     _saveData();
-    print('Max items set to: $maxItems');
   }
 
   int get maxItems => _maxItems;
   List<ClipboardItem> get items => List.from(_items);
   List<ClipboardItem> get favorites => List.from(_favorites);
 
-  ClipboardItem? getItemById(String id) {
-    return _items.firstWhere((item) => item.id == id);
-  }
-
-  List<ClipboardItem> searchItems(String query) {
-    if (query.isEmpty) return List.from(_items);
+  void debugPrintState() {
+    print('=== ClipboardManager State ===');
+    print('Items: ${_items.length}, Favorites: ${_favorites.length}');
+    print('Controllers closed: ${_itemsController.isClosed}, ${_favoritesController.isClosed}');
     
-    final lowercaseQuery = query.toLowerCase();
-    return _items.where((item) => 
-      item.content.toLowerCase().contains(lowercaseQuery) ||
-      item.timestamp.toString().toLowerCase().contains(lowercaseQuery)
-    ).toList();
+    for (int i = 0; i < _items.length; i++) {
+      final item = _items[i];
+      print('$i: ${item.preview}');
+    }
   }
 
+  // Не закрываем контроллеры при dispose!
   void dispose() {
     stopMonitoring();
-    _itemsController.close();
-    _favoritesController.close();
-    print('ClipboardManager disposed');
+    print('ClipboardManager dispose called (controllers kept alive)');
+  }
+
+    Future<void> clearHistory() async {
+    _items.clear();
+    _itemsController.add(List.from(_items));
+    await _saveData();
+  }
+
+  StreamSubscription<List<ClipboardItem>>? listen(Null Function(dynamic items) param0, 
+  {required Null Function(dynamic error) onError, required Null Function() onDone}) {
+    _itemsController.stream.listen(param0);
+
   }
 }
