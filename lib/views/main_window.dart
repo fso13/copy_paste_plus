@@ -77,6 +77,70 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
     }
   }
 
+  void _clearHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Очистить историю'),
+        content: const Text('Вы уверены, что хотите очистить всю историю? Это действие нельзя отменить.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Очистить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _clipboardManager.clearHistory();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('История очищена'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
+  void _clearFavorites() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Очистить избранное'),
+        content: const Text('Вы уверены, что хотите очистить все избранное? Это действие нельзя отменить.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Очистить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _clipboardManager.clearFavorites();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Избранное очищено'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -89,6 +153,8 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final filteredItems = _getFilteredItems();
+    final hasItems = filteredItems.isNotEmpty;
+    final isHistoryTab = _currentTabIndex == 0;
     
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -225,6 +291,46 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
                 ],
               ),
             ),
+            
+            // Clear button (only visible when there are items)
+            if (hasItems) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: isHistoryTab ? _clearHistory : _clearFavorites,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            size: 14,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isHistoryTab ? 'Очистить историю' : 'Очистить избранное',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             
             // Content
             Expanded(
@@ -394,10 +500,53 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
                   _clipboardManager.toggleFavorite(item.id);
                 },
               ),
+              ListTile(
+                leading: Icon(Icons.delete_outline, size: 20, color: Colors.red[400]),
+                title: Text(
+                  'Удалить',
+                  style: TextStyle(fontSize: 14, color: Colors.red[400]),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteConfirmation(item);
+                },
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  void _showDeleteConfirmation(ClipboardItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить элемент'),
+        content: const Text('Вы уверены, что хотите удалить этот элемент?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Удалить', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _clipboardManager.removeItem(item.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Элемент удален'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
   }
 }
