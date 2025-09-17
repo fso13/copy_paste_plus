@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/models/clipboard_item.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
@@ -9,7 +8,8 @@ class MainWindow extends StatefulWidget {
   final VoidCallback onClose;
   final VoidCallback onOpenSettings;
 
-  const MainWindow({super.key, 
+  const MainWindow({
+    super.key,
     required this.onClose,
     required this.onOpenSettings,
   });
@@ -52,7 +52,7 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
           _currentItems = items;
         });
       }
-    }, onError: (error) {  }, onDone: () {  });
+    }, onError: (error) {}, onDone: () {});
     
     _clipboardManager.refreshStreams();
   }
@@ -91,54 +91,154 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
     final filteredItems = _getFilteredItems();
     
     return Scaffold(
-      appBar: AppBar(
-        title: _buildSearchField(),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.history), text: 'История'),
-            Tab(icon: Icon(Icons.star), text: 'Избранное'),
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        margin: const EdgeInsets.all(8),
+        child: Column(
+          children: [
+            // macOS-style title bar
+            Container(
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  topRight: Radius.circular(10),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  // macOS traffic lights
+                  Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Colors.amber,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Text(
+                        'Буфер обмена',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.settings, size: 16, color: Colors.grey[600]),
+                    onPressed: widget.onOpenSettings,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, size: 16, color: Colors.grey[600]),
+                    onPressed: widget.onClose,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ),
+            
+            // Search field
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Container(
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  style: const TextStyle(fontSize: 14),
+                  decoration: InputDecoration(
+                    hintText: 'Поиск...',
+                    border: InputBorder.none,
+                    prefixIcon: Icon(Icons.search, size: 18, color: Colors.grey[500]),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear, size: 18, color: Colors.grey[500]),
+                            onPressed: _clearSearch,
+                            padding: EdgeInsets.zero,
+                          )
+                        : null,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  onChanged: (value) => setState(() {}),
+                ),
+              ),
+            ),
+            
+            // Tabs
+            Container(
+              height: 32,
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+              ),
+              child: TabBar(
+                controller: _tabController,
+                indicatorSize: TabBarIndicatorSize.label,
+                indicatorWeight: 2,
+                indicatorColor: Colors.blue,
+                labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                unselectedLabelStyle: const TextStyle(fontSize: 13),
+                labelColor: Colors.blue,
+                unselectedLabelColor: Colors.grey[600],
+                tabs: const [
+                  Tab(text: 'История'),
+                  Tab(text: 'Избранное'),
+                ],
+              ),
+            ),
+            
+            // Content
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildHistoryTab(filteredItems),
+                  _buildFavoritesTab(filteredItems),
+                ],
+              ),
+            ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: widget.onOpenSettings,
-            tooltip: 'Настройки',
-          ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: widget.onClose,
-            tooltip: 'Закрыть',
-          ),
-        ],
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildHistoryTab(filteredItems),
-          _buildFavoritesTab(filteredItems),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSearchField() {
-    return TextField(
-      controller: _searchController,
-      focusNode: _searchFocusNode,
-      decoration: InputDecoration(
-        hintText: 'Поиск...',
-        border: InputBorder.none,
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: _searchController.text.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear),
-                onPressed: _clearSearch,
-              )
-            : null,
-      ),
-      onChanged: (value) => setState(() {}),
     );
   }
 
@@ -148,15 +248,22 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
 
   Widget _buildFavoritesTab(List<ClipboardItem> items) {
     if (_clipboardManager.favorites.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.star_outline, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text('Нет избранных элементов'),
-            SizedBox(height: 8),
-            Text('Добавляйте элементы в избранное звездочкой'),
+            Icon(Icons.star_outline, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Нет избранных элементов',
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Добавляйте элементы в избранное звездочкой',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       );
@@ -175,9 +282,13 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.search_off, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text(message),
+            Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       );
@@ -193,22 +304,35 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
   }
 
   Widget _buildClipboardItem(ClipboardItem item) {
-    return ListTile(
-      title: Text(
-        item.preview,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey[200]!)),
       ),
-      subtitle: Text(item.timeAgo),
-      trailing: IconButton(
-        icon: Icon(
-          item.isFavorite ? Icons.star : Icons.star_border,
-          color: item.isFavorite ? Colors.amber : null,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        title: Text(
+          item.preview,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13),
         ),
-        onPressed: () => _clipboardManager.toggleFavorite(item.id),
+        subtitle: Text(
+          item.timeAgo,
+          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+        ),
+        trailing: IconButton(
+          icon: Icon(
+            item.isFavorite ? Icons.star : Icons.star_border,
+            size: 18,
+            color: item.isFavorite ? Colors.amber : Colors.grey[500],
+          ),
+          onPressed: () => _clipboardManager.toggleFavorite(item.id),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+        ),
+        onTap: () => _handleItemTap(item),
+        onLongPress: () => _showItemOptions(context, item),
       ),
-      onTap: () => _handleItemTap(item),
-      onLongPress: () => _showItemOptions(context, item),
     );
   }
 
@@ -217,9 +341,11 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
     widget.onClose();
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Скопировано в буфер обмена'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: const Text('Скопировано в буфер обмена'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -227,27 +353,49 @@ class _MainWindowState extends State<MainWindow> with SingleTickerProviderStateM
   void _showItemOptions(BuildContext context, ClipboardItem item) {
     showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.content_copy),
-              title: const Text('Копировать'),
-              onTap: () {
-                Navigator.pop(context);
-                _handleItemTap(item);
-              },
-            ),
-            ListTile(
-              leading: Icon(item.isFavorite ? Icons.star : Icons.star_border),
-              title: Text(item.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'),
-              onTap: () {
-                Navigator.pop(context);
-                _clipboardManager.toggleFavorite(item.id);
-              },
-            ),
-          ],
+        return Container(
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).dialogBackgroundColor,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(Icons.content_copy, size: 20, color: Colors.grey[700]),
+                title: Text('Копировать', style: const TextStyle(fontSize: 14)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _handleItemTap(item);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  item.isFavorite ? Icons.star : Icons.star_border,
+                  size: 20,
+                  color: item.isFavorite ? Colors.amber : Colors.grey[700],
+                ),
+                title: Text(
+                  item.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _clipboardManager.toggleFavorite(item.id);
+                },
+              ),
+            ],
+          ),
         );
       },
     );

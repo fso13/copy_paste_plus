@@ -23,7 +23,6 @@ class _SettingsWindowState extends State<SettingsWindow> {
   bool _isRecording = false;
   String _currentHotkeyDescription = '';
   
-  // Переменные для записи комбинации
   final List<HotKeyModifier> _recordedModifiers = [];
   PhysicalKeyboardKey? _recordedKey;
   final FocusNode _recordingFocusNode = FocusNode();
@@ -57,24 +56,24 @@ class _SettingsWindowState extends State<SettingsWindow> {
   String _formatHotkey(HotKey hotkey) {
     final modifiers = hotkey.modifiers!.map((modifier) {
       switch (modifier) {
-        case HotKeyModifier.control: return 'Ctrl';
-        case HotKeyModifier.alt: return 'Alt';
-        case HotKeyModifier.shift: return 'Shift';
-        case HotKeyModifier.meta: return 'Cmd';
+        case HotKeyModifier.control: return '⌃';
+        case HotKeyModifier.alt: return '⌥';
+        case HotKeyModifier.shift: return '⇧';
+        case HotKeyModifier.meta: return '⌘';
         default: return '';
       }
-    }).where((element) => element.isNotEmpty).join('+');
+    }).where((element) => element.isNotEmpty).join('');
 
     final key = _getKeyName(hotkey.physicalKey);
-    return '$modifiers${modifiers.isNotEmpty ? '+' : ''}$key';
+    return '$modifiers$key';
   }
 
   String _getKeyName(PhysicalKeyboardKey key) {
     final keyString = key.keyLabel;
     
     if (key == PhysicalKeyboardKey.space) return 'Space';
-    if (key == PhysicalKeyboardKey.enter) return 'Enter';
-    if (key == PhysicalKeyboardKey.escape) return 'Escape';
+    if (key == PhysicalKeyboardKey.enter) return 'Return';
+    if (key == PhysicalKeyboardKey.escape) return 'Esc';
     if (key == PhysicalKeyboardKey.tab) return 'Tab';
     
     if (keyString.isNotEmpty && keyString.length == 1) {
@@ -95,7 +94,6 @@ class _SettingsWindowState extends State<SettingsWindow> {
       _recordedKey = null;
     });
     
-    // Запрашиваем фокус для захвата клавиш
     FocusScope.of(context).requestFocus(_recordingFocusNode);
   }
 
@@ -104,7 +102,6 @@ class _SettingsWindowState extends State<SettingsWindow> {
       _isRecording = false;
     });
     
-    // Возвращаем фокус
     _recordingFocusNode.unfocus();
   }
 
@@ -113,9 +110,12 @@ class _SettingsWindowState extends State<SettingsWindow> {
       final newHotkey = HotKey(key: _recordedKey!, modifiers: _recordedModifiers);
       _applyNewHotkey(newHotkey);
     } else {
-      // Показываем ошибку если комбинация неполная
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите полную комбинацию (модификаторы + клавиша)')),
+        SnackBar(
+          content: const Text('Выберите полную комбинацию (модификаторы + клавиша)'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
       );
     }
   }
@@ -129,7 +129,11 @@ class _SettingsWindowState extends State<SettingsWindow> {
     });
     
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Горячие клавиши изменены: ${_formatHotkey(newHotkey)}')),
+      SnackBar(
+        content: Text('Горячие клавиши изменены: ${_formatHotkey(newHotkey)}'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 
@@ -138,13 +142,11 @@ class _SettingsWindowState extends State<SettingsWindow> {
 
     final physicalKey = event.physicalKey;
 
-    // Обрабатываем модификаторы
     if (_isModifierKey(physicalKey)) {
       _handleModifierKey(physicalKey, true);
       return;
     }
 
-    // Обрабатываем обычные клавиши
     if (!_isModifierKey(physicalKey)) {
       setState(() {
         _recordedKey = physicalKey;
@@ -206,26 +208,26 @@ class _SettingsWindowState extends State<SettingsWindow> {
   String _getRecordingStatus() {
     if (!_isRecording) return '';
 
-    final modifiers = _recordedModifiers.map(_modifierToString).join('+');
+    final modifiers = _recordedModifiers.map(_modifierToString).join('');
     final key = _recordedKey != null ? _getKeyName(_recordedKey!) : '...';
 
     if (modifiers.isEmpty && _recordedKey == null) {
       return 'Нажмите сочетание клавиш';
     } else if (modifiers.isNotEmpty && _recordedKey == null) {
-      return '$modifiers + ...';
+      return '$modifiers...';
     } else if (modifiers.isEmpty && _recordedKey != null) {
-      return 'Добавьте модификаторы (Ctrl, Alt, Shift, Cmd)';
+      return 'Добавьте модификаторы (⌃, ⌥, ⇧, ⌘)';
     } else {
-      return '$modifiers + $key';
+      return '$modifiers$key';
     }
   }
 
   String _modifierToString(HotKeyModifier modifier) {
     switch (modifier) {
-      case HotKeyModifier.control: return 'Ctrl';
-      case HotKeyModifier.alt: return 'Alt';
-      case HotKeyModifier.shift: return 'Shift';
-      case HotKeyModifier.meta: return 'Cmd';
+      case HotKeyModifier.control: return '⌃';
+      case HotKeyModifier.alt: return '⌥';
+      case HotKeyModifier.shift: return '⇧';
+      case HotKeyModifier.meta: return '⌘';
       default: return '';
     }
   }
@@ -241,7 +243,11 @@ class _SettingsWindowState extends State<SettingsWindow> {
     });
     
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Горячие клавиши сброшены на Cmd+Shift+C')),
+      SnackBar(
+        content: const Text('Горячие клавиши сброшены на ⌘⇧C'),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 
@@ -253,154 +259,281 @@ class _SettingsWindowState extends State<SettingsWindow> {
       focusNode: _recordingFocusNode,
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Настройки'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: widget.onClose,
+        backgroundColor: Colors.transparent,
+        body: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: BorderRadius.circular(10),
           ),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            // Настройки горячих клавиш
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          margin: const EdgeInsets.all(8),
+          child: Column(
+            children: [
+              // macOS-style title bar
+              Container(
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(10),
+                    topRight: Radius.circular(10),
+                  ),
+                ),
+                child: Row(
                   children: [
-                    const Text(
-                      'Горячие клавиши',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    const SizedBox(width: 12),
+                    // macOS traffic lights
+                    Row(
+                      children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.amber,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    const Text('Сочетание для открытия приложения'),
-                    const SizedBox(height: 16),
-                    
-                    // Текущая горячая клавиша
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: _isRecording 
-                            ? Colors.blue.withOpacity(0.1)
-                            : Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: _isRecording ? Colors.blue : Colors.grey[300]!,
-                          width: _isRecording ? 2 : 1,
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'Настройки',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[700],
+                          ),
                         ),
                       ),
-                      child: Column(
-                        children: [
-                          Text(
-                            _isRecording ? recordingStatus : _currentHotkeyDescription,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: _isRecording ? Colors.blue : Colors.black,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          if (_isRecording) ...[
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Нажмите модификаторы (Ctrl, Alt, Shift, Cmd) затем основную клавишу',
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, size: 16, color: Colors.grey[600]),
+                      onPressed: widget.onClose,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+              
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16.0),
+                  children: [
+                    // Hotkeys settings
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Горячие клавиши',
                               style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[800],
                               ),
-                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Сочетание для открытия приложения',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            // Current hotkey display
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: _isRecording 
+                                    ? Colors.blue.withOpacity(0.1)
+                                    : Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: _isRecording ? Colors.blue : Colors.grey[300]!,
+                                  width: _isRecording ? 2 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    _isRecording ? recordingStatus : _currentHotkeyDescription,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                      color: _isRecording ? Colors.blue : Colors.grey[800],
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  if (_isRecording) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Нажмите модификаторы (⌃, ⌥, ⇧, ⌘) затем основную клавишу',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[500],
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            
+                            const SizedBox(height: 16),
+                            
+                            if (!_isRecording) 
+                              ElevatedButton(
+                                onPressed: _startRecording,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                ),
+                                child: const Text('Изменить сочетание', style: TextStyle(fontSize: 13)),
+                              )
+                            else
+                              Row(
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: _saveRecordedHotkey,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                    child: const Text('Сохранить', style: TextStyle(fontSize: 13)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  OutlinedButton(
+                                    onPressed: _stopRecording,
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                    ),
+                                    child: const Text('Отменить', style: TextStyle(fontSize: 13)),
+                                  ),
+                                ],
+                              ),
+                            
+                            const SizedBox(height: 12),
+                            OutlinedButton(
+                              onPressed: _resetToDefaultHotkey,
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                              ),
+                              child: const Text('Сбросить на ⌘⇧C', style: TextStyle(fontSize: 13)),
                             ),
                           ],
-                        ],
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 16),
-                    
-                    if (!_isRecording) 
-                      ElevatedButton(
-                        onPressed: _startRecording,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
                         ),
-                        child: const Text('Изменить сочетание'),
-                      )
-                    else
-                      Row(
-                        children: [
-                          ElevatedButton(
-                            onPressed: _saveRecordedHotkey,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Storage settings
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Настройки хранения',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[800],
+                              ),
                             ),
-                            child: const Text('Сохранить'),
-                          ),
-                          const SizedBox(width: 12),
-                          OutlinedButton(
-                            onPressed: _stopRecording,
-                            child: const Text('Отменить'),
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+                            
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                'Запуск при старте системы',
+                                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                              ),
+                              value: _launchAtStartup,
+                              onChanged: _setAutoStartEnabled,
+                            ),
+                            
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                'Максимум элементов истории',
+                                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                              ),
+                              subtitle: Slider(
+                                value: _maxItems.toDouble(),
+                                min: 10,
+                                max: 100,
+                                divisions: 9,
+                                onChanged: (value) {
+                                  setState(() => _maxItems = value.toInt());
+                                },
+                                onChangeEnd: (value) {
+                                  _clipboardManager.setMaxItems(value.toInt());
+                                },
+                              ),
+                              trailing: Text(
+                                '$_maxItems',
+                                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    
-                    const SizedBox(width: 12),
-                    OutlinedButton(
-                      onPressed: _resetToDefaultHotkey,
-                      child: const Text('Сбросить на Cmd+Shift+C'),
                     ),
                   ],
                 ),
               ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Остальные настройки...
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Настройки хранения',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    ListTile(
-                      title: const Text('Запуск при старте системы'),
-                      trailing: Switch(
-                        value: _launchAtStartup,
-                        onChanged: _setAutoStartEnabled,
-                      ),
-                    ),
-                    
-                    ListTile(
-                      title: const Text('Максимум элементов истории'),
-                      subtitle: Slider(
-                        value: _maxItems.toDouble(),
-                        min: 10,
-                        max: 100,
-                        divisions: 9,
-                        onChanged: (value) {
-                          setState(() => _maxItems = value.toInt());
-                        },
-                        onChangeEnd: (value) {
-                          _clipboardManager.setMaxItems(value.toInt());
-                        },
-                      ),
-                      trailing: Text('$_maxItems'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
