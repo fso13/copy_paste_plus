@@ -28,6 +28,8 @@ void main() async {
 }
 
 class ClipboardManagerApp extends StatefulWidget {
+  const ClipboardManagerApp({super.key});
+
   @override
   _ClipboardManagerAppState createState() => _ClipboardManagerAppState();
 }
@@ -47,17 +49,17 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
     _initializeServices();
   }
 
-  Future<void> _initializeServices() async {
-    await _systemTrayService.initialize();
-    await _hotkeyService.initialize(_toggleWindow);
-    
-    _systemTrayService.onShowWindow.listen((_) {
-      print('Show window event from system tray');
-      _toggleWindow();
-    });
+@override
+Future<void> _initializeServices() async {
+  await _systemTrayService.initialize();
+  await _hotkeyService.initialize(_toggleWindow);
+  
+  _systemTrayService.onShowWindow.listen((_) {
+    _toggleWindow();
+  });
 
-    print('Services initialized');
-  }
+  print('Services initialized with hotkey');
+}
 
   void _toggleWindow() {
     print('Toggling window. Current state: $_showWindow');
@@ -82,22 +84,20 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
     }
   }
 
-  void _openSettings() {
-    print('Opening settings...');
-    setState(() {
-      _showSettings = true;
-      _showWindow = true;
-    });
-    windowManager.show();
-    windowManager.focus();
-  }
+void _openSettings() {
+  setState(() {
+    _showSettings = true;
+    _showWindow = true;
+  });
+  windowManager.show();
+  windowManager.focus();
+}
 
-  void _closeSettings() {
-    print('Closing settings...');
-    setState(() {
-      _showSettings = false;
-    });
-  }
+void _closeSettings() {
+  setState(() {
+    _showSettings = false;
+  });
+}
 
   @override
   Widget build(BuildContext context) {

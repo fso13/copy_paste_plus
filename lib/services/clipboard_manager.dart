@@ -353,6 +353,7 @@ Future<void> _copyWithFlutterClipboard(String content) async {
   StreamSubscription<List<ClipboardItem>>? listen(Null Function(dynamic items) param0, 
   {required Null Function(dynamic error) onError, required Null Function() onDone}) {
     _itemsController.stream.listen(param0);
+    return null;
 
   }
 }

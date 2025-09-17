@@ -7,7 +7,7 @@ class HotkeyService {
   HotkeyService._internal();
 
   HotKey _currentHotKey = HotKey(
-    key: LogicalKeyboardKey.keyC,
+    key: PhysicalKeyboardKey.keyC,
     modifiers: [HotKeyModifier.meta, HotKeyModifier.shift],
   );
 
@@ -16,6 +16,7 @@ class HotkeyService {
   Future<void> initialize(Function() onHotkeyPressed) async {
     _onHotkeyPressed = onHotkeyPressed;
     await _registerHotkey();
+    print('HotkeyService initialized: ${_formatHotkey(_currentHotKey)}');
   }
 
   Future<void> _registerHotkey() async {
@@ -25,15 +26,13 @@ class HotkeyService {
       await hotKeyManager.register(
         _currentHotKey,
         keyDownHandler: (hotKey) {
-          print('Hotkey pressed: ${_formatHotkey(_currentHotKey)}');
+          print('Hotkey pressed: ${_formatHotkey(hotKey)}');
           _onHotkeyPressed?.call();
         },
       );
       print('Hotkey registered: ${_formatHotkey(_currentHotKey)}');
     } catch (e) {
       print('Error registering hotkey: $e');
-      // Повторяем попытку через секунду
-      Future.delayed(Duration(seconds: 1), _registerHotkey);
     }
   }
 
@@ -56,11 +55,33 @@ class HotkeyService {
       }
     }).where((element) => element.isNotEmpty).join('+');
 
-    final key = hotkey.key.toString().replaceFirst('KeyCode.', '');
+    final key = _getKeyName(hotkey.physicalKey);
     return '$modifiers${modifiers.isNotEmpty ? '+' : ''}$key';
+  }
+
+  String _getKeyName(PhysicalKeyboardKey key) {
+    final keyString = key.keyLabel;
+    
+    if (key == PhysicalKeyboardKey.space) return 'Space';
+    if (key == PhysicalKeyboardKey.enter) return 'Enter';
+    if (key == PhysicalKeyboardKey.escape) return 'Escape';
+    if (key == PhysicalKeyboardKey.tab) return 'Tab';
+    if (key == PhysicalKeyboardKey.capsLock) return 'CapsLock';
+    
+    if (keyString.isNotEmpty && keyString.length == 1) {
+      return keyString.toUpperCase();
+    }
+    
+    // Функциональные клавиши
+    if (key.usbHidUsage >= 0x0007003a && key.usbHidUsage <= 0x00070045) {
+      return 'F${key.usbHidUsage - 0x0007003a + 1}';
+    }
+    
+    return key.toString().split('.').last;
   }
 
   void dispose() {
     hotKeyManager.unregisterAll();
+    print('HotkeyService disposed');
   }
 }
