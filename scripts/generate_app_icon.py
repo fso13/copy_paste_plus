@@ -118,7 +118,6 @@ def main() -> None:
     out_assets = ROOT / "assets" / "AppIcons"
     out_assets.mkdir(parents=True, exist_ok=True)
     master.save(out_assets / "appstore.png")
-    master.save(out_assets / "playstore.png")
 
     docs = ROOT / "docs" / "screenshots"
     docs.mkdir(parents=True, exist_ok=True)

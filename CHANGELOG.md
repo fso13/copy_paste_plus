@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-08-11
+
+### Изменено
+- Flutter SDK **3.44.9** / Dart **3.12.2** (закрывает CVE-2026-27704 в pub)
+- Обновлены зависимости без известных CVE (OSV): `uuid` 4.6.0, `shared_preferences` 2.5.5, `window_manager` 0.5.2, `flutter_lints` 6.0.0, `package_info_plus` 10.2.1 и транзитивные пакеты
+- Проект только для macOS: удалены платформы Android / iOS / Linux / Windows / Web и неиспользуемые артефакты
+
 ## [1.0.4] — 2026-08-11
 
 ### Добавлено
@@ -72,7 +79,8 @@
 - Настройки: хоткей, лимит истории, запуск при старте системы
 - Нативный мониторинг буфера обмена на macOS
 
-[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.4...HEAD
+[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.5...HEAD
+[1.0.5]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.5
 [1.0.4]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.4
 [1.0.3]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.2

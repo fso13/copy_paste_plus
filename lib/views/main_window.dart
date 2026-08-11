@@ -358,7 +358,7 @@ class _MainWindowState extends State<MainWindow>
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
       itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (context, index) {
         final item = items[index];
         return _ClipboardItemTile(

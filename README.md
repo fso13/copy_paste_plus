@@ -125,7 +125,7 @@ git push origin v1.0.1
 
 ## Стек
 
-Flutter (macOS), `window_manager`, `system_tray`, `hotkey_manager`, `shared_preferences`, `package_info_plus`.
+Flutter (macOS, 3.44 / Dart 3.12), `window_manager`, `system_tray`, `hotkey_manager`, `shared_preferences`, `package_info_plus`.
 
 ## Лицензия
 
