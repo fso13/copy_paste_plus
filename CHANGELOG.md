@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-08-11
+
+### Добавлено
+- Сохранение стилей буфера (HTML/RTF): при копировании из IDE подсветка сохраняется при вставке в Word и другие rich-text приложения; в plain-text поля вставляется только текст
+- Комментарии к избранному: произвольный текст, отображается под контентом
+- Кнопка «⋮» в элементе списка для открытия контекстного меню
+
+### Изменено
+- Комментарии к избранному отображаются более мелким текстом
+
 ## [1.0.3] — 2026-08-11
 
 ### Добавлено
@@ -62,7 +72,8 @@
 - Настройки: хоткей, лимит истории, запуск при старте системы
 - Нативный мониторинг буфера обмена на macOS
 
-[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.4...HEAD
+[1.0.4]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.4
 [1.0.3]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.2
 [1.0.1]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.1

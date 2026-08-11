@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/clipboard_item.dart';
@@ -18,7 +20,7 @@ class ClipboardManager {
 
   Timer? _monitoringTimer;
   bool _isMonitoring = false;
-  StreamSubscription<String>? _clipboardSubscription;
+  StreamSubscription<ClipboardPayload>? _clipboardSubscription;
 
   ClipboardManager._internal() {
     print('ClipboardManager singleton instance created');
@@ -39,20 +41,22 @@ class ClipboardManager {
 
   Future<void> _startRealMonitoring() async {
     try {
-      // Получаем текущее состояние буфера
       _lastChangeCount = await MacOSClipboardService.getChangeCount();
-      _lastContent = await MacOSClipboardService.getClipboardContent();
+      final current = await MacOSClipboardService.getClipboardContent();
+      _lastContent = current.content;
 
-      // Запускаем нативный мониторинг
       await MacOSClipboardService.startMonitoring();
 
-      // Слушаем изменения через EventChannel
       _clipboardSubscription = MacOSClipboardService.clipboardChanges.listen(
-        (content) async {
-          if (content.isNotEmpty && content != _lastContent) {
-            print('Clipboard change detected: $content');
-            _lastContent = content;
-            await addItem(content: content);
+        (payload) async {
+          if (!payload.isEmpty && payload.content != _lastContent) {
+            print('Clipboard change detected: ${payload.content}');
+            _lastContent = payload.content;
+            await addItem(
+              content: payload.content,
+              html: payload.html,
+              rtf: payload.rtf,
+            );
           }
         },
         onError: (error) {
@@ -89,11 +93,15 @@ class ClipboardManager {
       if (currentChangeCount != _lastChangeCount) {
         _lastChangeCount = currentChangeCount;
 
-        final content = await MacOSClipboardService.getClipboardContent();
-        if (content.isNotEmpty && content != _lastContent) {
-          print('Clipboard change detected: $content');
-          _lastContent = content;
-          await addItem(content: content);
+        final payload = await MacOSClipboardService.getClipboardContent();
+        if (!payload.isEmpty && payload.content != _lastContent) {
+          print('Clipboard change detected: ${payload.content}');
+          _lastContent = payload.content;
+          await addItem(
+            content: payload.content,
+            html: payload.html,
+            rtf: payload.rtf,
+          );
         }
       }
     } catch (e) {
@@ -120,13 +128,43 @@ class ClipboardManager {
     print('Clipboard monitoring stopped');
   }
 
-  Future<void> addItem({required String content}) async {
+  Future<void> addItem({
+    required String content,
+    String? html,
+    String? rtf,
+  }) async {
     if (content.isEmpty) return;
     if (_items.isNotEmpty && _items.first.content == content) {
+      // Refresh rich formats if we previously stored plain-only.
+      final first = _items.first;
+      if (!first.hasRichText &&
+          ((html != null && html.isNotEmpty) ||
+              (rtf != null && rtf.isNotEmpty))) {
+        _items[0] = ClipboardItem(
+          id: first.id,
+          content: content,
+          html: html,
+          rtf: rtf,
+          timestamp: first.timestamp,
+          isFavorite: first.isFavorite,
+          comment: first.comment,
+        );
+        final favIndex = _favorites.indexWhere((item) => item.id == first.id);
+        if (favIndex != -1) {
+          _favorites[favIndex] = _items[0];
+        }
+        await _saveData();
+        refreshStreams();
+      }
       return;
     }
 
-    final newItem = ClipboardItem(content: content, timestamp: DateTime.now());
+    final newItem = ClipboardItem(
+      content: content,
+      html: html,
+      rtf: rtf,
+      timestamp: DateTime.now(),
+    );
 
     _items.insert(0, newItem);
 
@@ -137,7 +175,9 @@ class ClipboardManager {
     await _saveData();
     refreshStreams();
 
-    print('Item added to history. Total items: ${_items.length}');
+    print(
+      'Item added to history (rich=${newItem.hasRichText}). Total: ${_items.length}',
+    );
   }
 
   void refreshStreams() {
@@ -160,7 +200,6 @@ class ClipboardManager {
     _itemsController = StreamController<List<ClipboardItem>>.broadcast();
     _favoritesController = StreamController<List<ClipboardItem>>.broadcast();
 
-    // Immediately add current data to new streams
     _itemsController.add([..._items]);
     _favoritesController.add([..._favorites]);
   }
@@ -182,22 +221,12 @@ class ClipboardManager {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      final itemsData = _items
-          .map(
-            (item) =>
-                '${item.id}|${item.content.replaceAll('|', '_')}|${item.timestamp.millisecondsSinceEpoch}|${item.isFavorite}',
-          )
-          .toList();
-
+      final itemsData =
+          _items.map((item) => jsonEncode(item.toJson())).toList();
       await prefs.setStringList('clipboard_items', itemsData);
 
-      final favoritesData = _favorites
-          .map(
-            (item) =>
-                '${item.id}|${item.content.replaceAll('|', '_')}|${item.timestamp.millisecondsSinceEpoch}|${item.isFavorite}',
-          )
-          .toList();
-
+      final favoritesData =
+          _favorites.map((item) => jsonEncode(item.toJson())).toList();
       await prefs.setStringList('favorites', favoritesData);
       await prefs.setInt('max_items', _maxItems);
 
@@ -213,50 +242,16 @@ class ClipboardManager {
 
       final itemsData = prefs.getStringList('clipboard_items') ?? [];
       _items.clear();
-
       for (final itemStr in itemsData) {
-        try {
-          final parts = itemStr.split('|');
-          if (parts.length == 4) {
-            final content = parts[1].replaceAll('_', '|');
-            _items.add(
-              ClipboardItem(
-                id: parts[0],
-                content: content,
-                timestamp: DateTime.fromMillisecondsSinceEpoch(
-                  int.parse(parts[2]),
-                ),
-                isFavorite: parts[3] == 'true',
-              ),
-            );
-          }
-        } catch (e) {
-          print('Error loading item: $e');
-        }
+        final item = _parseStoredItem(itemStr);
+        if (item != null) _items.add(item);
       }
 
       final favoritesData = prefs.getStringList('favorites') ?? [];
       _favorites.clear();
-
       for (final favoriteStr in favoritesData) {
-        try {
-          final parts = favoriteStr.split('|');
-          if (parts.length == 4) {
-            final content = parts[1].replaceAll('_', '|');
-            _favorites.add(
-              ClipboardItem(
-                id: parts[0],
-                content: content,
-                timestamp: DateTime.fromMillisecondsSinceEpoch(
-                  int.parse(parts[2]),
-                ),
-                isFavorite: parts[3] == 'true',
-              ),
-            );
-          }
-        } catch (e) {
-          print('Error loading favorite: $e');
-        }
+        final item = _parseStoredItem(favoriteStr);
+        if (item != null) _favorites.add(item);
       }
 
       _maxItems = prefs.getInt('max_items') ?? 28;
@@ -270,16 +265,43 @@ class ClipboardManager {
     }
   }
 
+  /// Supports JSON (current) and legacy `id|content|ts|fav` pipe format.
+  ClipboardItem? _parseStoredItem(String raw) {
+    try {
+      final trimmed = raw.trimLeft();
+      if (trimmed.startsWith('{')) {
+        return ClipboardItem.fromJson(
+          jsonDecode(raw) as Map<String, dynamic>,
+        );
+      }
+
+      final parts = raw.split('|');
+      if (parts.length == 4) {
+        return ClipboardItem(
+          id: parts[0],
+          content: parts[1].replaceAll('_', '|'),
+          timestamp: DateTime.fromMillisecondsSinceEpoch(int.parse(parts[2])),
+          isFavorite: parts[3] == 'true',
+        );
+      }
+    } catch (e) {
+      print('Error loading item: $e');
+    }
+    return null;
+  }
+
   Future<void> copyToClipboard(ClipboardItem item) async {
-    // Временно останавливаем мониторинг чтобы избежать дублирования
     stopMonitoring();
 
     try {
-      print('Copying to clipboard: ${item.preview}');
+      print(
+        'Copying to clipboard: ${item.preview} (rich=${item.hasRichText})',
+      );
 
-      // Используем нативный метод для установки буфера обмена
       final success = await MacOSClipboardService.setClipboardContent(
-        item.content,
+        content: item.content,
+        html: item.html,
+        rtf: item.rtf,
       );
 
       if (success) {
@@ -291,31 +313,11 @@ class ClipboardManager {
       }
     } catch (e) {
       print('Error copying to clipboard: $e');
-
-      // Fallback: используем flutter clipboard как запасной вариант
-      try {
-        await _copyWithFlutterClipboard(item.content);
-      } catch (e) {
-        print('Fallback copy also failed: $e');
-      }
     }
 
-    // Возобновляем мониторинг через задержку
     Future.delayed(const Duration(milliseconds: 1000), () {
       startMonitoring();
     });
-  }
-
-  // Запасной метод через flutter/clipboard
-  Future<void> _copyWithFlutterClipboard(String content) async {
-    try {
-      // Добавим зависимость в pubspec.yaml: clipboard: ^0.1.3
-      // import 'package:clipboard/clipboard.dart';
-      // await Clipboard.setData(ClipboardData(text: content));
-      print('Used fallback clipboard method');
-    } catch (e) {
-      print('Fallback clipboard error: $e');
-    }
   }
 
   Future<void> toggleFavorite(String itemId) async {
@@ -332,6 +334,30 @@ class ClipboardManager {
       await _saveData();
       refreshStreams();
     }
+  }
+
+  /// Sets a freeform comment on a favorite (empty clears it).
+  Future<void> setFavoriteComment(String itemId, String? comment) async {
+    final normalized = comment?.trim();
+    final value = (normalized == null || normalized.isEmpty) ? null : comment;
+
+    var updated = false;
+    for (final item in _items) {
+      if (item.id == itemId) {
+        item.comment = value;
+        updated = true;
+      }
+    }
+    for (final item in _favorites) {
+      if (item.id == itemId) {
+        item.comment = value;
+        updated = true;
+      }
+    }
+
+    if (!updated) return;
+    await _saveData();
+    refreshStreams();
   }
 
   void setMaxItems(int maxItems) {
@@ -352,11 +378,10 @@ class ClipboardManager {
 
     for (int i = 0; i < _items.length; i++) {
       final item = _items[i];
-      print('$i: ${item.preview}');
+      print('$i: ${item.preview} rich=${item.hasRichText}');
     }
   }
 
-  // Не закрываем контроллеры при dispose!
   void dispose() {
     stopMonitoring();
     print('ClipboardManager dispose called (controllers kept alive)');

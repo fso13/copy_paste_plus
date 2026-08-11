@@ -1,25 +1,78 @@
 import 'package:flutter/services.dart';
 
+/// Snapshot of macOS pasteboard contents (plain + optional rich formats).
+class ClipboardPayload {
+  const ClipboardPayload({
+    required this.content,
+    this.html,
+    this.rtf,
+  });
+
+  final String content;
+  final String? html;
+  final String? rtf;
+
+  bool get hasRichText =>
+      (html != null && html!.isNotEmpty) || (rtf != null && rtf!.isNotEmpty);
+
+  bool get isEmpty => content.isEmpty;
+
+  factory ClipboardPayload.fromMap(dynamic raw) {
+    if (raw is String) {
+      return ClipboardPayload(content: raw);
+    }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      return ClipboardPayload(
+        content: map['content']?.toString() ?? '',
+        html: _optionalString(map['html']),
+        rtf: _optionalString(map['rtf']),
+      );
+    }
+    return const ClipboardPayload(content: '');
+  }
+
+  Map<String, dynamic> toMap() => {
+        'content': content,
+        if (html != null && html!.isNotEmpty) 'html': html,
+        if (rtf != null && rtf!.isNotEmpty) 'rtf': rtf,
+      };
+
+  static String? _optionalString(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString();
+    return text.isEmpty ? null : text;
+  }
+}
+
 class MacOSClipboardService {
   static const MethodChannel _channel = MethodChannel('clipboard_manager');
-  static const EventChannel _clipboardChangeChannel = 
+  static const EventChannel _clipboardChangeChannel =
       EventChannel('clipboard_manager/changes');
 
-  /// Получает текущее содержимое буфера обмена
-  static Future<String> getClipboardContent() async {
+  /// Reads plain text and any available HTML / RTF from the pasteboard.
+  static Future<ClipboardPayload> getClipboardContent() async {
     try {
       final result = await _channel.invokeMethod('getClipboardContent');
-      return result ?? '';
+      return ClipboardPayload.fromMap(result);
     } on PlatformException catch (e) {
       print('Failed to get clipboard content: ${e.message}');
-      return '';
+      return const ClipboardPayload(content: '');
     }
   }
 
-  /// Устанавливает содержимое буфера обмена
-  static Future<bool> setClipboardContent(String content) async {
+  /// Writes plain text plus optional rich formats.
+  /// Apps that don't support styles fall back to [content] automatically.
+  static Future<bool> setClipboardContent({
+    required String content,
+    String? html,
+    String? rtf,
+  }) async {
     try {
-      final result = await _channel.invokeMethod('setClipboardContent', {'content': content});
+      final result = await _channel.invokeMethod(
+        'setClipboardContent',
+        ClipboardPayload(content: content, html: html, rtf: rtf).toMap(),
+      );
       return result ?? false;
     } on PlatformException catch (e) {
       print('Failed to set clipboard content: ${e.message}');
@@ -27,7 +80,6 @@ class MacOSClipboardService {
     }
   }
 
-  /// Запускает мониторинг изменений буфера обмена
   static Future<void> startMonitoring() async {
     try {
       await _channel.invokeMethod('startMonitoring');
@@ -36,7 +88,6 @@ class MacOSClipboardService {
     }
   }
 
-  /// Останавливает мониторинг изменений буфера обмена
   static Future<void> stopMonitoring() async {
     try {
       await _channel.invokeMethod('stopMonitoring');
@@ -45,7 +96,6 @@ class MacOSClipboardService {
     }
   }
 
-  /// Получает счетчик изменений буфера обмена
   static Future<int> getChangeCount() async {
     try {
       final result = await _channel.invokeMethod('getChangeCount');
@@ -56,13 +106,13 @@ class MacOSClipboardService {
     }
   }
 
-  /// Поток изменений буфера обмена
-  static Stream<String> get clipboardChanges {
+  /// Stream of pasteboard changes (plain + optional HTML / RTF).
+  static Stream<ClipboardPayload> get clipboardChanges {
     return _clipboardChangeChannel
         .receiveBroadcastStream()
-        .map((dynamic event) => event.toString())
+        .map(ClipboardPayload.fromMap)
         .handleError((error) {
-          print('Clipboard change stream error: $error');
-        });
+      print('Clipboard change stream error: $error');
+    });
   }
 }

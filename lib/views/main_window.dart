@@ -70,9 +70,11 @@ class _MainWindowState extends State<MainWindow>
     final searchQuery = _searchController.text.toLowerCase();
     if (searchQuery.isEmpty) return items;
 
-    return items
-        .where((item) => item.content.toLowerCase().contains(searchQuery))
-        .toList();
+    return items.where((item) {
+      if (item.content.toLowerCase().contains(searchQuery)) return true;
+      final comment = item.comment;
+      return comment != null && comment.toLowerCase().contains(searchQuery);
+    }).toList();
   }
 
   void _clearSearch() {
@@ -362,7 +364,7 @@ class _MainWindowState extends State<MainWindow>
         return _ClipboardItemTile(
           item: item,
           onTap: () => _handleItemTap(item),
-          onLongPress: () => _showItemOptions(item),
+          onShowMenu: () => _showItemOptions(item),
           onToggleFavorite: () async {
             await _clipboardManager.toggleFavorite(item.id);
             if (mounted) setState(() {});
@@ -422,6 +424,24 @@ class _MainWindowState extends State<MainWindow>
                   if (mounted) setState(() {});
                 },
               ),
+              if (item.isFavorite)
+                ListTile(
+                  leading: Icon(
+                    Icons.notes_outlined,
+                    size: 20,
+                    color: palette.accentPink,
+                  ),
+                  title: Text(
+                    item.hasComment
+                        ? 'Изменить комментарий'
+                        : 'Добавить комментарий',
+                    style: TextStyle(color: palette.ink, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _editFavoriteComment(item);
+                  },
+                ),
               ListTile(
                 leading: Icon(Icons.delete_outline, size: 20, color: palette.red),
                 title: Text(
@@ -437,6 +457,73 @@ class _MainWindowState extends State<MainWindow>
           ),
         );
       },
+    );
+  }
+
+  Future<void> _editFavoriteComment(ClipboardItem item) async {
+    final palette = context.palette;
+    final controller = TextEditingController(text: item.comment ?? '');
+
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Комментарий'),
+          content: SizedBox(
+            width: 360,
+            child: TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 6,
+              minLines: 3,
+              style: TextStyle(fontSize: 13, color: palette.ink, height: 1.35),
+              decoration: InputDecoration(
+                hintText: 'Любой текст: метка, заметка, ссылка…',
+                hintStyle: TextStyle(color: palette.muted, fontSize: 13),
+                filled: true,
+                fillColor: palette.bgElevated.withValues(alpha: 0.6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.accent),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+          ),
+          actions: [
+            if (item.hasComment)
+              TextButton(
+                onPressed: () => Navigator.pop(context, ''),
+                child: Text('Удалить', style: TextStyle(color: palette.red)),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Отмена', style: TextStyle(color: palette.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: Text('Сохранить', style: TextStyle(color: palette.accent)),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+    if (result == null || !mounted) return;
+
+    await _clipboardManager.setFavoriteComment(item.id, result);
+    if (mounted) setState(() {});
+    _showSnack(
+      result.trim().isEmpty ? 'Комментарий удалён' : 'Комментарий сохранён',
     );
   }
 
@@ -645,13 +732,13 @@ class _ClipboardItemTile extends StatefulWidget {
   const _ClipboardItemTile({
     required this.item,
     required this.onTap,
-    required this.onLongPress,
+    required this.onShowMenu,
     required this.onToggleFavorite,
   });
 
   final ClipboardItem item;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback onShowMenu;
   final VoidCallback onToggleFavorite;
 
   @override
@@ -674,11 +761,11 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
         color: Colors.transparent,
         child: InkWell(
           onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
+          onLongPress: widget.onShowMenu,
           borderRadius: BorderRadius.circular(10),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.fromLTRB(0, 10, 8, 10),
+            padding: const EdgeInsets.fromLTRB(0, 10, 4, 10),
             decoration: BoxDecoration(
               color: _hovered
                   ? palette.current.withValues(alpha: 0.45)
@@ -723,6 +810,20 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                             fontFamily: 'Menlo',
                           ),
                         ),
+                        if (item.hasComment) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            item.comment!,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              height: 1.3,
+                              color: palette.muted,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 6),
                         Row(
                           children: [
@@ -759,18 +860,41 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(
-                      item.isFavorite
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
-                      size: 18,
-                      color: item.isFavorite ? palette.accent : palette.muted,
-                    ),
-                    onPressed: widget.onToggleFavorite,
-                    padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 30, minHeight: 30),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          item.isFavorite
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          size: 18,
+                          color:
+                              item.isFavorite ? palette.accent : palette.muted,
+                        ),
+                        onPressed: widget.onToggleFavorite,
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(minWidth: 28, minHeight: 28),
+                        splashRadius: 14,
+                        tooltip: item.isFavorite
+                            ? 'Убрать из избранного'
+                            : 'В избранное',
+                      ),
+                      IconButton(
+                        icon: Icon(
+                          Icons.more_vert,
+                          size: 18,
+                          color: palette.muted,
+                        ),
+                        onPressed: widget.onShowMenu,
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(minWidth: 28, minHeight: 28),
+                        splashRadius: 14,
+                        tooltip: 'Меню',
+                      ),
+                    ],
                   ),
                 ],
               ),
