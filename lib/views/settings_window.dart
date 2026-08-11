@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/hotkey_service.dart';
@@ -13,6 +15,7 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
 
 class SettingsWindow extends StatefulWidget {
   final VoidCallback onClose;
@@ -334,6 +337,38 @@ class _SettingsWindowState extends State<SettingsWindow> {
     }
   }
 
+  Future<void> _quitApp() async {
+    final palette = context.palette;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Завершить работу'),
+        content: const Text(
+          'Приложение будет закрыто полностью, включая иконку в меню-баре.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Отмена', style: TextStyle(color: palette.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Завершить', style: TextStyle(color: palette.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await windowManager.destroy();
+    } catch (_) {
+      // Ignore — process exit is enough.
+    }
+    exit(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -622,6 +657,26 @@ class _SettingsWindowState extends State<SettingsWindow> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 14),
+                  SettingsCard(
+                    title: 'Приложение',
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _quitApp,
+                        icon: Icon(Icons.power_settings_new, size: 16, color: palette.red),
+                        label: Text(
+                          'Завершить работу',
+                          style: TextStyle(fontSize: 13, color: palette.red),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: palette.red.withValues(alpha: 0.45)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),

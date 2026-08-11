@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an idea for CopyPastePlus
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share the problem you want to solve and a possible approach.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What pain point does this address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work from a user perspective?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about (optional).
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority for you
+      options:
+        - Nice to have
+        - Important
+        - Blocking my workflow
+    validations:
+      required: true

@@ -1,5 +1,14 @@
 # CopyPastePlus
 
+[![CI — macOS DMG](https://github.com/fso13/copy_paste_plus/actions/workflows/build-dmg.yml/badge.svg)](https://github.com/fso13/copy_paste_plus/actions/workflows/build-dmg.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/fso13/copy_paste_plus?include_prereleases)](https://github.com/fso13/copy_paste_plus/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-macOS-blue.svg)](https://github.com/fso13/copy_paste_plus)
+
+<p align="center">
+  <img src="docs/screenshots/app-icon.png" alt="CopyPastePlus" width="120" />
+</p>
+
 Менеджер буфера обмена для macOS: история копирований, избранное, глобальный хоткей и трей.
 
 ## Возможности
@@ -64,10 +73,58 @@ git push origin v1.0.1
 
 Также есть кнопка **Проверить сейчас**.
 
+## Документация
+
+Подробнее: [docs/README.md](docs/README.md)
+
+### Скриншоты
+
+#### История буфера
+
+Окно истории: поиск, вкладки «История» / «Избранное», список скопированных фрагментов.
+
+<p align="center">
+  <img src="docs/screenshots/main-history.png" alt="История буфера обмена" width="360" />
+</p>
+
+#### Избранное
+
+Закладки со звёздочкой — быстрый доступ к нужным фрагментам.
+
+<p align="center">
+  <img src="docs/screenshots/favorites.png" alt="Избранное" width="360" />
+</p>
+
+#### Настройки
+
+Тема (система / светлая / тёмная), обновления, горячие клавиши и сведения о версии.
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Настройки" width="360" />
+</p>
+
+### Быстрые действия
+
+| Действие | Как |
+| --- | --- |
+| Показать / скрыть окно | `⌘⇧C` или иконка в меню-баре |
+| Вставить из истории | Клик по элементу |
+| В избранное | Клик по ★ |
+| Меню элемента | Долгое нажатие |
+| Настройки | Иконка ⚙ в заголовке |
+| Выход | Меню трея → Выход |
+
+### Ссылки
+
+- [CHANGELOG.md](CHANGELOG.md) — история изменений
+- [CONTRIBUTING.md](CONTRIBUTING.md) — как контрибьютить
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — кодекс поведения
+- [LICENSE](LICENSE) — MIT
+
 ## Стек
 
 Flutter (macOS), `window_manager`, `system_tray`, `hotkey_manager`, `shared_preferences`, `package_info_plus`.
 
 ## Лицензия
 
-Private / personal project unless stated otherwise.
+[MIT](LICENSE) © Dmitry Rudenko
