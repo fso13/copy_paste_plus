@@ -11,6 +11,8 @@
 
 Менеджер буфера обмена для macOS: история копирований, избранное, глобальный хоткей и трей.
 
+🌐 [Сайт (GitHub Pages)](https://fso13.github.io/copy_paste_plus/)
+
 ## Возможности
 
 - История скопированного текста с быстрым поиском
@@ -76,6 +78,7 @@ git push origin v1.0.1
 
 ## Документация
 
+Сайт: [fso13.github.io/copy_paste_plus](https://fso13.github.io/copy_paste_plus/)  
 Подробнее: [docs/README.md](docs/README.md)
 
 ### Скриншоты

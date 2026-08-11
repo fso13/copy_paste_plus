@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="CopyPastePlus — менеджер буфера обмена для macOS: история, избранное, стили HTML/RTF, хоткей и трей." />
+  <meta name="theme-color" content="#282a36" id="theme-color-meta" />
+  <meta property="og:title" content="CopyPastePlus" />
+  <meta property="og:description" content="Менеджер буфера обмена для macOS с историей, избранным и сохранением стилей." />
+  <meta property="og:image" content="screenshots/app-icon.png" />
+  <title>CopyPastePlus — clipboard manager for macOS</title>
+  <script>
+    (() => {
+      const saved = localStorage.getItem("theme");
+      const prefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+      const theme = saved === "light" || saved === "dark" ? saved : prefersLight ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <link rel="preconnect" href="https://resources.jetbrains.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="icon" href="screenshots/app-icon.png" type="image/png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="#top" aria-label="CopyPastePlus">
+      <span class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="22" height="22" fill="none">
+          <rect x="7" y="4" width="14" height="18" rx="2.5" stroke="currentColor" stroke-width="2"/>
+          <rect x="11" y="10" width="14" height="18" rx="2.5" fill="var(--bg-elevated)" stroke="var(--accent)" stroke-width="2"/>
+          <path d="M18 16v8M14 20h8" stroke="var(--accent-pink)" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="logo-text">CopyPaste<span class="logo-plus">Plus</span></span>
+    </a>
+    <div class="header-actions">
+      <nav class="nav" aria-label="Основная навигация">
+        <a href="#features">Возможности</a>
+        <a href="#screens">Скриншоты</a>
+        <a href="#install">Установка</a>
+        <a href="#stack">Стек</a>
+      </nav>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Переключить тему" title="Тема">
+        <span class="theme-toggle__icon theme-toggle__icon--sun" aria-hidden="true">☀</span>
+        <span class="theme-toggle__icon theme-toggle__icon--moon" aria-hidden="true">☾</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-label="CopyPastePlus">
+      <div class="hero-copy">
+        <p class="hero-role">Clipboard manager · macOS</p>
+        <h1 class="hero-name" data-text="CopyPastePlus">
+          CopyPaste<span class="hero-plus">Plus</span>
+        </h1>
+        <p class="hero-lead">
+          История копирований, избранное и сохранение стилей — быстрый буфер обмена
+          прямо из меню-бара.
+        </p>
+        <p class="hero-status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-text">watching pasteboard…</span>
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/fso13/copy_paste_plus/releases/latest">
+            Скачать DMG
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/fso13/copy_paste_plus" target="_blank" rel="noopener noreferrer">
+            GitHub
+          </a>
+        </div>
+        <ul class="hero-meta">
+          <li><span>Платформа</span><strong>macOS</strong></li>
+          <li><span>Лицензия</span><strong>MIT</strong></li>
+          <li><span>Хоткей</span><strong>⌘⇧C</strong></li>
+        </ul>
+      </div>
+
+      <aside class="hero-panel" aria-hidden="true">
+        <div class="panel-bar">
+          <span class="panel-dots"></span>
+          <span class="panel-file">AppDelegate.swift</span>
+          <span class="panel-lang">Swift</span>
+        </div>
+        <pre class="hero-code"><code><span class="c-line"><span class="c-cmt">// keep styles when the destination supports them</span></span>
+<span class="c-line"><span class="c-kw">private func</span> <span class="c-fn">getClipboardPayload</span>() -&gt; [<span class="c-type">String</span>: <span class="c-type">Any</span>] {</span>
+<span class="c-line">  <span class="c-kw">let</span> pasteboard = <span class="c-type">NSPasteboard</span>.general</span>
+<span class="c-line">  <span class="c-kw">var</span> payload: [<span class="c-type">String</span>: <span class="c-type">Any</span>] = [:]</span>
+<span class="c-line"></span>
+<span class="c-line">  payload[<span class="c-str">"content"</span>] = pasteboard.string(forType: .string) ?? <span class="c-str">""</span></span>
+<span class="c-line">  <span class="c-kw">if let</span> html = readHtml(from: pasteboard) {</span>
+<span class="c-line">    payload[<span class="c-str">"html"</span>] = html</span>
+<span class="c-line">  }</span>
+<span class="c-line">  <span class="c-kw">if let</span> rtf = readRtf(from: pasteboard) {</span>
+<span class="c-line">    payload[<span class="c-str">"rtf"</span>] = rtf</span>
+<span class="c-line">  }</span>
+<span class="c-line">  <span class="c-kw">return</span> payload<span class="c-cursor"></span></span>
+<span class="c-line">}</span></code></pre>
+      </aside>
+    </section>
+
+    <section id="features" class="section">
+      <div class="section-head">
+        <p class="eyebrow">Features</p>
+        <h2>Возможности</h2>
+        <p class="section-lead">Всё нужное для ежедневной работы с буфером — без лишнего шума.</p>
+      </div>
+
+      <ol class="timeline">
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">History</span>
+            <time>поиск · вкладки</time>
+          </div>
+          <div class="job-body">
+            <h3>История копирований</h3>
+            <p>Каждый копируемый фрагмент попадает в список. Быстрый поиск и вкладки «История» / «Избранное».</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Rich text</span>
+            <time>HTML · RTF</time>
+          </div>
+          <div class="job-body">
+            <h3>Сохранение стилей</h3>
+            <p>Подсветка из IDE сохраняется при вставке в Word и другие rich-text приложения. В plain-text поля уходит только текст.</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Favorites</span>
+            <time>★ · комментарии</time>
+          </div>
+          <div class="job-body">
+            <h3>Избранное с заметками</h3>
+            <p>Закрепляйте нужные фрагменты и добавляйте произвольный комментарий — он отображается под контентом.</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Desktop</span>
+            <time>трей · хоткей</time>
+          </div>
+          <div class="job-body">
+            <h3>Меню-бар и ⌘⇧C</h3>
+            <p>Глобальный хоткей, иконка в меню-баре, темы system / light / Dracula-inspired dark и проверка обновлений через GitHub Releases.</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <section id="screens" class="section section-shots">
+      <div class="section-inner">
+        <div class="section-head">
+          <p class="eyebrow">Product</p>
+          <h2>Как выглядит</h2>
+          <p class="section-lead">Окно истории, избранное и настройки — в том же визуальном языке, что и сайт.</p>
+        </div>
+
+        <figure class="shot shot-hero reveal">
+          <img src="screenshots/main-history.png" alt="Окно истории буфера обмена CopyPastePlus" width="720" height="900" loading="lazy" />
+          <figcaption>История буфера — поиск, вкладки и список фрагментов</figcaption>
+        </figure>
+
+        <div class="shot-row">
+          <figure class="shot reveal">
+            <img src="screenshots/favorites.png" alt="Вкладка избранного" width="480" height="600" loading="lazy" />
+            <figcaption>Избранное</figcaption>
+          </figure>
+          <figure class="shot reveal">
+            <img src="screenshots/settings.png" alt="Окно настроек" width="480" height="600" loading="lazy" />
+            <figcaption>Настройки</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" class="section">
+      <div class="section-head">
+        <p class="eyebrow">Install</p>
+        <h2>Установка</h2>
+      </div>
+      <ol class="install-steps reveal">
+        <li>
+          <span class="step-num">01</span>
+          <div>
+            <h3>Скачайте DMG</h3>
+            <p>Возьмите сборку из <a href="https://github.com/fso13/copy_paste_plus/releases/latest">Releases</a>.</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">02</span>
+          <div>
+            <h3>Перетащите в Applications</h3>
+            <p>Откройте образ и положите <strong>CopyPastePlus</strong> в папку «Программы».</p>
+          </div>
+        </li>
+        <li>
+          <span class="step-num">03</span>
+          <div>
+            <h3>Разрешите доступ</h3>
+            <p>При первом запуске macOS может попросить доступ в «Системные настройки → Конфиденциальность».</p>
+          </div>
+        </li>
+      </ol>
+      <div class="install-actions reveal">
+        <a class="btn btn-primary" href="https://github.com/fso13/copy_paste_plus/releases/latest">Открыть Releases</a>
+        <a class="btn btn-ghost" href="https://github.com/fso13/copy_paste_plus#readme">Документация в README</a>
+      </div>
+    </section>
+
+    <section id="stack" class="section section-stack">
+      <div class="section-inner">
+        <div class="section-head">
+          <p class="eyebrow">Tech stack</p>
+          <h2>Стек</h2>
+          <p class="section-lead">Нативный macOS-клиент на Flutter с доступом к NSPasteboard.</p>
+        </div>
+        <ul class="stack-grid reveal">
+          <li><span>UI</span><strong>Flutter · Dart 3.12</strong></li>
+          <li><span>Desktop</span><strong>window_manager · system_tray</strong></li>
+          <li><span>Input</span><strong>hotkey_manager</strong></li>
+          <li><span>Storage</span><strong>shared_preferences</strong></li>
+          <li><span>Native</span><strong>Swift · NSPasteboard</strong></li>
+          <li><span>Updates</span><strong>GitHub Releases API</strong></li>
+          <li><span>CI</span><strong>GitHub Actions · DMG</strong></li>
+          <li><span>License</span><strong>MIT</strong></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="usage" class="section">
+      <div class="section-head">
+        <p class="eyebrow">Shortcuts</p>
+        <h2>Быстрые действия</h2>
+      </div>
+      <ul class="contacts reveal">
+        <li><span>Показать / скрыть</span><strong>⌘⇧C или иконка в меню-баре</strong></li>
+        <li><span>Вставить из истории</span><strong>Клик по элементу</strong></li>
+        <li><span>В избранное</span><strong>★</strong></li>
+        <li><span>Меню элемента</span><strong>⋮</strong></li>
+        <li><span>Фокус поиска</span><strong>⌘F</strong></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      © <span id="year"></span> Dmitry Rudenko ·
+      <span class="footer-joke">built with Flutter &amp; pasteboard</span>
+    </p>
+    <a href="https://github.com/fso13/copy_paste_plus" target="_blank" rel="noopener noreferrer">
+      fso13/copy_paste_plus
+    </a>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div class="fun-layer" aria-hidden="true">
+    <span class="bat b1">🦇</span>
+    <span class="bat b2">🦇</span>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
