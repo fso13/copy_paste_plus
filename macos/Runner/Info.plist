@@ -29,12 +29,5 @@
     <key>NSAppleEventsUsageDescription</key>
     <string>Приложению требуется доступ к буферу обмена для отслеживания скопированного текста</string>
 
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-    <key>com.apple.security.files.bookmarks.app-scope</key>
-    <true/>
-
 </dict>
 </plist>

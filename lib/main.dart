@@ -1,18 +1,26 @@
+import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/hotkey_service.dart';
 import 'package:copy_paste_plus/services/system_tray_service.dart';
+import 'package:copy_paste_plus/services/theme_service.dart';
+import 'package:copy_paste_plus/services/update_service.dart';
+import 'package:copy_paste_plus/theme/app_theme.dart';
 import 'package:copy_paste_plus/views/main_window.dart';
 import 'package:copy_paste_plus/views/settings_window.dart';
+import 'package:copy_paste_plus/widgets/update_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
-import 'global.dart';
+
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   await windowManager.ensureInitialized();
-  
-  WindowOptions windowOptions = const WindowOptions(
+  await themeService.load();
+  await updateService.load();
+
+  const windowOptions = WindowOptions(
     size: Size(400, 600),
     center: true,
     skipTaskbar: true,
@@ -24,104 +32,142 @@ void main() async {
     await windowManager.hide();
   });
 
-  runApp(ClipboardManagerApp());
+  runApp(const ClipboardManagerApp());
 }
 
 class ClipboardManagerApp extends StatefulWidget {
   const ClipboardManagerApp({super.key});
 
   @override
-  _ClipboardManagerAppState createState() => _ClipboardManagerAppState();
+  State<ClipboardManagerApp> createState() => _ClipboardManagerAppState();
 }
 
 class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
   final SystemTrayService _systemTrayService = SystemTrayService();
-  final ClipboardManager _clipboardManager = clipboardManager; // Синглтон
+  final ClipboardManager _clipboardManager = clipboardManager;
   final HotkeyService _hotkeyService = HotkeyService();
-  
+  final ThemeService _themeService = themeService;
+  final UpdateService _updateService = updateService;
+
   bool _showWindow = false;
   bool _showSettings = false;
+  bool _updatePromptShown = false;
 
   @override
   void initState() {
     super.initState();
-    print('App initState');
+    _themeService.addListener(_onThemeChanged);
     _initializeServices();
   }
 
-@override
-Future<void> _initializeServices() async {
-  await _systemTrayService.initialize();
-  await _hotkeyService.initialize(_toggleWindow);
-  
-  _systemTrayService.onShowWindow.listen((_) {
-    _toggleWindow();
-  });
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
 
-  print('Services initialized with hotkey');
-}
+  Future<void> _initializeServices() async {
+    await _systemTrayService.initialize();
+    await _hotkeyService.initialize(_toggleWindow);
+
+    _systemTrayService.onShowWindow.listen((_) {
+      _toggleWindow();
+    });
+
+    _systemTrayService.onOpenSettings.listen((_) {
+      _openSettings();
+    });
+
+    // Delayed so tray/hotkey init settles first.
+    Future<void>.delayed(const Duration(seconds: 3), _maybeCheckUpdates);
+  }
+
+  Future<void> _maybeCheckUpdates() async {
+    if (!mounted || _updateService.mode == UpdateCheckMode.disabled) return;
+
+    try {
+      final release = await _updateService.checkForUpdates();
+      if (release == null || !mounted || _updatePromptShown) return;
+      _updatePromptShown = true;
+
+      if (_updateService.mode == UpdateCheckMode.auto) {
+        await _updateService.openUpdate(release);
+        return;
+      }
+
+      setState(() {
+        _showWindow = true;
+        _showSettings = false;
+      });
+      await windowManager.show();
+      await windowManager.focus();
+
+      final nav = appNavigatorKey.currentContext;
+      if (nav != null) {
+        await showUpdateAvailableDialog(
+          nav,
+          release: release,
+          updateService: _updateService,
+        );
+      }
+    } catch (_) {
+      // Network / API errors are non-fatal.
+    }
+  }
 
   void _toggleWindow() {
-    print('Toggling window. Current state: $_showWindow');
-    
     setState(() {
       _showWindow = !_showWindow;
       _showSettings = false;
     });
 
     if (_showWindow) {
-      print('Showing window...');
       windowManager.show();
       windowManager.focus();
-      
-      // Гарантируем что контроллеры активны
       _clipboardManager.ensureControllersActive();
       _clipboardManager.refreshStreams();
-      
     } else {
-      print('Hiding window...');
       windowManager.hide();
     }
   }
 
-void _openSettings() {
-  setState(() {
-    _showSettings = true;
-    _showWindow = true;
-  });
-  windowManager.show();
-  windowManager.focus();
-}
+  void _openSettings() {
+    setState(() {
+      _showSettings = true;
+      _showWindow = true;
+    });
+    windowManager.show();
+    windowManager.focus();
+  }
 
-void _closeSettings() {
-  setState(() {
-    _showSettings = false;
-  });
-}
+  void _closeSettings() {
+    setState(() {
+      _showSettings = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    print('Building app. Show window: $_showWindow, Show settings: $_showSettings');
-    
     return MaterialApp(
-      home: _showWindow 
-          ? (_showSettings 
+      navigatorKey: appNavigatorKey,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: _themeService.themeMode,
+      home: _showWindow
+          ? (_showSettings
               ? SettingsWindow(onClose: _closeSettings)
               : MainWindow(
                   onClose: _toggleWindow,
                   onOpenSettings: _openSettings,
                 ))
-          : Container(),
-      debugShowCheckedModeBanner: false,
+          : const SizedBox.shrink(),
     );
   }
 
   @override
   void dispose() {
-    print('App dispose');
+    _themeService.removeListener(_onThemeChanged);
     _systemTrayService.dispose();
     _hotkeyService.dispose();
-    // Не вызываем dispose у ClipboardManager чтобы сохранить состояние
     super.dispose();
   }
 }

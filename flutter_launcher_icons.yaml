@@ -1,7 +1,8 @@
 # flutter_launcher_icons.yaml
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
+  image_path: "assets/AppIcons/appstore.png"
   macos:
-    image_path: "assets/AppIcons/appstore.png"
     generate: true
+    image_path: "assets/AppIcons/appstore.png"

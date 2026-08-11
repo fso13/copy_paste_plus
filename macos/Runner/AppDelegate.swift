@@ -3,7 +3,6 @@ import FlutterMacOS
 
 @main
 class AppDelegate: FlutterAppDelegate {
-    var statusBarItem: NSStatusItem?
     var clipboardTimer: Timer?
     var lastChangeCount: Int = 0
     var eventSink: FlutterEventSink?
@@ -17,38 +16,26 @@ class AppDelegate: FlutterAppDelegate {
     }
     
     override func applicationDidFinishLaunching(_ notification: Notification) {
-        // Создание иконки в трее
-        statusBarItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        if let button = statusBarItem?.button {
-            // Создаем простую иконку
-            let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-                NSColor.systemBlue.setFill()
-                rect.fill()
-                return true
+        // Tray icon is owned by Flutter `system_tray` — do not create a second NSStatusItem here.
+
+        // Настройка каналов буфера обмена
+        if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
+            let clipboardChannel = FlutterMethodChannel(
+                name: "clipboard_manager",
+                binaryMessenger: controller.engine.binaryMessenger
+            )
+            let eventChannel = FlutterEventChannel(
+                name: "clipboard_manager/changes",
+                binaryMessenger: controller.engine.binaryMessenger
+            )
+            
+            clipboardChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+                self?.handleClipboardMethodCall(call: call, result: result)
             }
-            button.image = image
-            button.action = #selector(showWindow(_:))
+            
+            eventChannel.setStreamHandler(self)
         }
         
-        let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Показать", action: #selector(showWindow(_:)), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Выход", action: #selector(quitApp(_:)), keyEquivalent: "q"))
-        
-        statusBarItem?.menu = menu
-        
-        // Настройка каналов
-        let controller = mainFlutterWindow?.contentViewController as! FlutterViewController
-        let clipboardChannel = FlutterMethodChannel(name: "clipboard_manager", binaryMessenger: controller.engine.binaryMessenger)
-        let eventChannel = FlutterEventChannel(name: "clipboard_manager/changes", binaryMessenger: controller.engine.binaryMessenger)
-        
-        clipboardChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
-            self?.handleClipboardMethodCall(call: call, result: result)
-        }
-        
-        eventChannel.setStreamHandler(self)
-        
-        // Запускаем мониторинг буфера обмена
         startClipboardMonitoring()
         
         super.applicationDidFinishLaunching(notification)
@@ -99,7 +86,6 @@ class AppDelegate: FlutterAppDelegate {
         stopClipboardMonitoring()
         lastChangeCount = NSPasteboard.general.changeCount
         
-        // Мониторим буфер обмена каждые 0.5 секунд
         clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             self?.checkClipboardChanges()
         }
@@ -119,22 +105,10 @@ class AppDelegate: FlutterAppDelegate {
             
             let content = getClipboardContent()
             if !content.isEmpty {
-                // Отправляем изменения через EventChannel
                 eventSink?(content)
                 print("Native: Clipboard changed: '\(content)'")
             }
         }
-    }
-    
-    @objc func showWindow(_ sender: Any?) {
-        if let window = NSApplication.shared.windows.first {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        }
-    }
-    
-    @objc func quitApp(_ sender: Any?) {
-        NSApplication.shared.terminate(nil)
     }
 }
 

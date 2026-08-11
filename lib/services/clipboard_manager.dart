@@ -364,33 +364,35 @@ class ClipboardManager {
 
   Future<void> clearHistory() async {
     _items.clear();
-    _itemsController.add(List.from(_items));
     await _saveData();
+    refreshStreams();
   }
 
-  StreamSubscription<List<ClipboardItem>>? listen(
-    Null Function(dynamic items) param0, {
-    required Null Function(dynamic error) onError,
-    required Null Function() onDone,
+  StreamSubscription<List<ClipboardItem>> listen(
+    void Function(List<ClipboardItem> items) onData, {
+    Function? onError,
+    void Function()? onDone,
   }) {
-    _itemsController.stream.listen(param0);
+    return _itemsController.stream.listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+    );
   }
 
   Future<void> clearFavorites() async {
+    for (final item in _items) {
+      item.isFavorite = false;
+    }
     _favorites.clear();
     await _saveData();
+    refreshStreams();
   }
 
   Future<void> removeItem(String id) async {
-    ClipboardItem? item = _items.firstWhere(
-      (item) => item.id == id,
-      orElse: () => _favorites.firstWhere(
-        (item) => item.id == id,
-      ), // если элемент не найден
-    );
-    _items.remove(item);
-    _items.remove(item);
-
+    _items.removeWhere((item) => item.id == id);
+    _favorites.removeWhere((item) => item.id == id);
     await _saveData();
+    refreshStreams();
   }
 }
