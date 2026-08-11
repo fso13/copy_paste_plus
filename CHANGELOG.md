@@ -7,8 +7,13 @@
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-08-12
+
 ### Добавлено
 - Секция Changelog на GitHub Pages с автосинхронизацией из корневого `CHANGELOG.md`
+
+### Исправлено
+- Сборка CI: исчерпывающий `switch` по `HotKeyModifier` (`capsLock`, `fn`) для Dart 3.12
 
 ## [1.0.6] — 2026-08-12
 
@@ -90,7 +95,8 @@
 - Настройки: хоткей, лимит истории, запуск при старте системы
 - Нативный мониторинг буфера обмена на macOS
 
-[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.6...HEAD
+[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.7...HEAD
+[1.0.7]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.7
 [1.0.6]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.6
 [1.0.5]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.5
 [1.0.4]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.4

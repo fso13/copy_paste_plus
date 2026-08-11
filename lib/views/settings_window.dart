@@ -131,8 +131,10 @@ class _SettingsWindowState extends State<SettingsWindow> {
           return '⇧';
         case HotKeyModifier.meta:
           return '⌘';
-        default:
-          return '';
+        case HotKeyModifier.capsLock:
+          return '⇪';
+        case HotKeyModifier.fn:
+          return 'Fn';
       }
     }).where((element) => element.isNotEmpty).join('');
 
@@ -291,8 +293,10 @@ class _SettingsWindowState extends State<SettingsWindow> {
         return '⇧';
       case HotKeyModifier.meta:
         return '⌘';
-      default:
-        return '';
+      case HotKeyModifier.capsLock:
+        return '⇪';
+      case HotKeyModifier.fn:
+        return 'Fn';
     }
   }
 

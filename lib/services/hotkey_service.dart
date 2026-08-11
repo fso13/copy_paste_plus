@@ -94,6 +94,10 @@ class HotkeyService {
         return 'shift';
       case HotKeyModifier.meta:
         return 'meta';
+      case HotKeyModifier.capsLock:
+        return 'capsLock';
+      case HotKeyModifier.fn:
+        return 'fn';
     }
   }
 
@@ -107,6 +111,10 @@ class HotkeyService {
         return HotKeyModifier.shift;
       case 'meta':
         return HotKeyModifier.meta;
+      case 'capsLock':
+        return HotKeyModifier.capsLock;
+      case 'fn':
+        return HotKeyModifier.fn;
       default:
         return null;
     }
@@ -152,6 +160,10 @@ class HotkeyService {
               return 'Shift';
             case HotKeyModifier.meta:
               return 'Cmd';
+            case HotKeyModifier.capsLock:
+              return 'CapsLock';
+            case HotKeyModifier.fn:
+              return 'Fn';
           }
         })
         .where((element) => element.isNotEmpty)
