@@ -7,6 +7,21 @@
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-08-11
+
+### Добавлено
+- Бренд-марка CopyPaste**Plus** (иконка буфера с «+», two-tone подпись)
+- Glitch-эффект надписи при наведении (как на fso13)
+- Горячая клавиша `⌘F` для фокуса поиска
+
+### Изменено
+- Интерфейс главного окна и настроек приведён к макетам (карточки, вкладки, футер)
+- Иконка приложения и трея в том же стиле, что и в UI
+- Убраны декоративные «светофоры» в шапке окна
+
+### Исправлено
+- Подсказка `⌘F` в поиске не соответствовала реальному поведению
+
 ## [1.0.2] — 2026-08-11
 
 ### Добавлено
@@ -47,7 +62,8 @@
 - Настройки: хоткей, лимит истории, запуск при старте системы
 - Нативный мониторинг буфера обмена на macOS
 
-[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.2
 [1.0.1]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.1
 [1.0.0]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.0

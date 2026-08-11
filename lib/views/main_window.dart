@@ -5,8 +5,10 @@ import 'package:copy_paste_plus/models/clipboard_item.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
 import 'package:copy_paste_plus/widgets/app_panel.dart';
+import 'package:copy_paste_plus/widgets/brand_mark.dart';
 import 'package:copy_paste_plus/widgets/fun_bits.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class MainWindow extends StatefulWidget {
   final VoidCallback onClose;
@@ -76,6 +78,14 @@ class _MainWindowState extends State<MainWindow>
   void _clearSearch() {
     _searchController.clear();
     if (mounted) setState(() {});
+  }
+
+  void _focusSearch() {
+    _searchFocusNode.requestFocus();
+    _searchController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _searchController.text.length,
+    );
   }
 
   Future<void> _clearHistory() async {
@@ -148,110 +158,170 @@ class _MainWindowState extends State<MainWindow>
     final historyItems = _filtered(_clipboardManager.items);
     final favoriteItems = _filtered(_clipboardManager.favorites);
     final isHistoryTab = _currentTabIndex == 0;
-    final hasItems = isHistoryTab ? historyItems.isNotEmpty : favoriteItems.isNotEmpty;
+    final visibleCount =
+        isHistoryTab ? historyItems.length : favoriteItems.length;
+    final hasItems = visibleCount > 0;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: AppPanel(
-        title: 'clipboard.history',
-        actions: [
-          _HeaderIconButton(
-            icon: Icons.settings_outlined,
-            onPressed: widget.onOpenSettings,
-          ),
-          const SizedBox(width: 4),
-          _HeaderIconButton(
-            icon: Icons.close,
-            onPressed: widget.onClose,
-          ),
-        ],
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(14, 10, 14, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: StatusTicker(),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, meta: true): _focusSearch,
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _focusSearch,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: AppPanel(
+            title: 'clipboard.history',
+            actions: [
+              _HeaderIconButton(
+                icon: Icons.settings_outlined,
+                onPressed: widget.onOpenSettings,
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-              child: _SearchField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                onChanged: (_) => setState(() {}),
-                onClear: _clearSearch,
+              const SizedBox(width: 2),
+              _HeaderIconButton(
+                icon: Icons.close,
+                onPressed: widget.onClose,
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: Container(
-                height: 34,
-                padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: palette.bgElevated.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: palette.line),
+            ],
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(14, 12, 14, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: BrandMark(iconSize: 26, fontSize: 17),
+                  ),
                 ),
-                child: TabBar(
-                  controller: _tabController,
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  dividerColor: Colors.transparent,
-                  indicator: BoxDecoration(
-                    color: palette.current,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: palette.accent.withValues(alpha: 0.45)),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                  child: _SearchField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    onChanged: (_) => setState(() {}),
+                    onClear: _clearSearch,
                   ),
-                  labelStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  unselectedLabelStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  labelColor: palette.accent,
-                  unselectedLabelColor: palette.muted,
-                  tabs: const [
-                    Tab(text: 'История'),
-                    Tab(text: 'Избранное'),
-                  ],
                 ),
-              ),
-            ),
-            if (hasItems)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: isHistoryTab ? _clearHistory : _clearFavorites,
-                    icon: Icon(Icons.delete_outline, size: 14, color: palette.muted),
-                    label: Text(
-                      isHistoryTab ? 'Очистить историю' : 'Очистить избранное',
-                      style: TextStyle(fontSize: 11, color: palette.muted),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: palette.line.withValues(alpha: 0.85),
+                        ),
+                      ),
                     ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      backgroundColor: palette.bgElevated.withValues(alpha: 0.65),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        side: BorderSide(color: palette.line),
+                    child: TabBar(
+                      controller: _tabController,
+                      indicatorSize: TabBarIndicatorSize.tab,
+                      dividerColor: Colors.transparent,
+                      indicator: UnderlineTabIndicator(
+                        borderSide:
+                            BorderSide(color: palette.accent, width: 2.5),
+                        insets: EdgeInsets.zero,
+                      ),
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                      labelStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      unselectedLabelStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      labelColor: palette.accent,
+                      unselectedLabelColor: palette.muted,
+                      tabs: [
+                        const Tab(
+                          height: 40,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.schedule, size: 15),
+                              SizedBox(width: 6),
+                              Text('История'),
+                            ],
+                          ),
+                        ),
+                        Tab(
+                          height: 40,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _currentTabIndex == 1
+                                    ? Icons.star_rounded
+                                    : Icons.star_outline,
+                                size: 15,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text('Избранное'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (hasItems)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed:
+                            isHistoryTab ? _clearHistory : _clearFavorites,
+                        icon: Icon(Icons.delete_outline,
+                            size: 14, color: palette.muted),
+                        label: Text(
+                          isHistoryTab ? 'Очистить' : 'Очистить избранное',
+                          style:
+                              TextStyle(fontSize: 11, color: palette.muted),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                       ),
                     ),
                   ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildItemsList(historyItems, 'истории'),
+                      _buildFavoritesTab(favoriteItems),
+                    ],
+                  ),
                 ),
-              ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildItemsList(historyItems, 'истории'),
-                  _buildFavoritesTab(favoriteItems),
-                ],
-              ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: palette.line)),
+                    color: palette.codeBar.withValues(alpha: 0.55),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(child: StatusTicker()),
+                      Text(
+                        '$visibleCount ${visibleCount == 1 ? 'item' : 'items'}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Menlo',
+                          fontWeight: FontWeight.w600,
+                          color: palette.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -436,16 +506,16 @@ class _SearchField extends StatelessWidget {
     final hasText = controller.text.isNotEmpty;
 
     return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: palette.bgElevated.withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(8),
+        color: palette.bgElevated.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: palette.line),
       ),
       child: Row(
         children: [
-          Icon(Icons.search, size: 15, color: palette.muted),
+          Icon(Icons.search, size: 16, color: palette.muted),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -463,7 +533,7 @@ class _SearchField extends StatelessWidget {
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
-                hintText: 'Поиск…',
+                hintText: 'Поиск в истории…',
                 hintStyle: TextStyle(
                   color: palette.muted,
                   fontSize: 13,
@@ -480,6 +550,23 @@ class _SearchField extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.only(left: 6),
                 child: Icon(Icons.close, size: 15, color: palette.muted),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: palette.current.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: palette.line),
+              ),
+              child: Text(
+                '⌘F',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontFamily: 'Menlo',
+                  color: palette.muted,
+                ),
               ),
             ),
         ],
@@ -530,6 +617,30 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
+String _detectContentType(String content) {
+  final trimmed = content.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json';
+  if (RegExp(r'^https?://', caseSensitive: false).hasMatch(trimmed)) {
+    return 'url';
+  }
+  if (RegExp(r'^(git|npm|flutter|cd|ls|brew|curl|ssh)\b').hasMatch(trimmed) ||
+      trimmed.startsWith('./') ||
+      trimmed.startsWith('sudo ')) {
+    return 'shell';
+  }
+  if (trimmed.contains('function') ||
+      trimmed.contains('const ') ||
+      trimmed.contains('=>') ||
+      trimmed.contains('console.')) {
+    return 'javascript';
+  }
+  if (trimmed.contains('{') &&
+      (trimmed.contains('color:') || trimmed.contains('background'))) {
+    return 'css';
+  }
+  return 'text';
+}
+
 class _ClipboardItemTile extends StatefulWidget {
   const _ClipboardItemTile({
     required this.item,
@@ -554,6 +665,7 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final item = widget.item;
+    final type = _detectContentType(item.content);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -563,65 +675,105 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
         child: InkWell(
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.fromLTRB(0, 10, 8, 10),
             decoration: BoxDecoration(
               color: _hovered
-                  ? palette.current.withValues(alpha: 0.55)
-                  : palette.bgElevated.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(8),
+                  ? palette.current.withValues(alpha: 0.45)
+                  : palette.bgElevated.withValues(alpha: 0.42),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: _hovered ? palette.accent.withValues(alpha: 0.35) : palette.line,
+                color: _hovered
+                    ? palette.accent.withValues(alpha: 0.4)
+                    : palette.line.withValues(alpha: 0.75),
               ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 3,
-                  height: 34,
-                  margin: const EdgeInsets.only(right: 10, top: 2),
-                  decoration: BoxDecoration(
-                    color: item.isFavorite ? palette.yellow : palette.accent,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.preview,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.35,
-                          color: palette.ink,
-                          fontFamily: 'Menlo',
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 3.5,
+                    margin: const EdgeInsets.only(left: 2, right: 10),
+                    decoration: BoxDecoration(
+                      color: palette.accent,
+                      borderRadius: BorderRadius.circular(2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: palette.accent.withValues(alpha: 0.35),
+                          blurRadius: 6,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.timeAgo,
-                        style: TextStyle(fontSize: 11, color: palette.muted),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    item.isFavorite ? Icons.star : Icons.star_border,
-                    size: 16,
-                    color: item.isFavorite ? palette.yellow : palette.muted,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.preview,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.4,
+                            color: palette.ink,
+                            fontFamily: 'Menlo',
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Text(
+                              item.timeAgo,
+                              style: TextStyle(
+                                  fontSize: 11, color: palette.muted),
+                            ),
+                            Text(
+                              '  ·  ',
+                              style: TextStyle(
+                                  fontSize: 11, color: palette.muted),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: palette.accent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                type,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontFamily: 'Menlo',
+                                  color: palette.accent.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                  onPressed: widget.onToggleFavorite,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                ),
-              ],
+                  IconButton(
+                    icon: Icon(
+                      item.isFavorite
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                      size: 18,
+                      color: item.isFavorite ? palette.accent : palette.muted,
+                    ),
+                    onPressed: widget.onToggleFavorite,
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 30, minHeight: 30),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

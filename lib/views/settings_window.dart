@@ -8,6 +8,7 @@ import 'package:copy_paste_plus/services/update_service.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
 import 'package:copy_paste_plus/views/pong_game.dart';
 import 'package:copy_paste_plus/widgets/app_panel.dart';
+import 'package:copy_paste_plus/widgets/brand_mark.dart';
 import 'package:copy_paste_plus/widgets/fun_bits.dart';
 import 'package:copy_paste_plus/widgets/update_dialog.dart';
 import 'package:flutter/material.dart';
@@ -395,18 +396,24 @@ class _SettingsWindowState extends State<SettingsWindow> {
               child: ListView(
                 padding: const EdgeInsets.all(14),
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 12, left: 2),
-                    child: StatusTicker(),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: BrandMark(
+                      iconSize: 36,
+                      fontSize: 18,
+                      showSubtitle: 'Настройки',
+                    ),
                   ),
                   SettingsCard(
                     title: 'Тема',
-                    subtitle: 'По умолчанию используется тема системы',
+                    subtitle: 'Выберите тему приложения',
+                    icon: Icons.brush_outlined,
                     child: Column(
                       children: [
                         _ThemeOption(
                           label: 'Как в системе',
-                          icon: Icons.brightness_auto_outlined,
+                          description:
+                              'Автоматически переключать тему в зависимости от настроек системы',
                           selected: _themeService.preference ==
                               AppThemePreference.system,
                           onTap: () => _themeService
@@ -415,7 +422,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
                         const SizedBox(height: 8),
                         _ThemeOption(
                           label: 'Светлая',
-                          icon: Icons.light_mode_outlined,
+                          description: 'Всегда использовать светлую тему',
                           selected: _themeService.preference ==
                               AppThemePreference.light,
                           onTap: () => _themeService
@@ -424,7 +431,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
                         const SizedBox(height: 8),
                         _ThemeOption(
                           label: 'Тёмная',
-                          icon: Icons.dark_mode_outlined,
+                          description: 'Всегда использовать тёмную тему',
                           selected: _themeService.preference ==
                               AppThemePreference.dark,
                           onTap: () => _themeService
@@ -437,12 +444,13 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   SettingsCard(
                     title: 'Обновления',
                     subtitle:
-                        'Проверка GitHub Releases примерно раз в 12 часов',
+                        'Настройте способ получения уведомлений об обновлениях',
+                    icon: Icons.sync,
                     child: Column(
                       children: [
                         _ThemeOption(
                           label: 'Выключено',
-                          icon: Icons.notifications_off_outlined,
+                          description: 'Не проверять обновления',
                           selected: _updateService.mode ==
                               UpdateCheckMode.disabled,
                           onTap: () => _updateService
@@ -451,7 +459,8 @@ class _SettingsWindowState extends State<SettingsWindow> {
                         const SizedBox(height: 8),
                         _ThemeOption(
                           label: 'Уведомлять',
-                          icon: Icons.notifications_active_outlined,
+                          description:
+                              'Показывать уведомления о доступных обновлениях',
                           selected:
                               _updateService.mode == UpdateCheckMode.notify,
                           onTap: () =>
@@ -459,8 +468,9 @@ class _SettingsWindowState extends State<SettingsWindow> {
                         ),
                         const SizedBox(height: 8),
                         _ThemeOption(
-                          label: 'Автоматически открывать скачивание',
-                          icon: Icons.system_update_alt,
+                          label: 'Автоматически',
+                          description:
+                              'При новой версии сразу открывать скачивание DMG',
                           selected:
                               _updateService.mode == UpdateCheckMode.auto,
                           onTap: () =>
@@ -480,12 +490,21 @@ class _SettingsWindowState extends State<SettingsWindow> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Icon(Icons.refresh, size: 16),
+                                : Icon(Icons.refresh,
+                                    size: 16, color: palette.accent),
                             label: Text(
                               _checkingUpdates
                                   ? 'Проверяем…'
                                   : 'Проверить сейчас',
-                              style: const TextStyle(fontSize: 13),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: palette.accent,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: palette.accent.withValues(alpha: 0.4),
+                              ),
                             ),
                           ),
                         ),
@@ -496,6 +515,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   SettingsCard(
                     title: 'Горячие клавиши',
                     subtitle: 'Сочетание для открытия приложения',
+                    icon: Icons.keyboard_outlined,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -590,6 +610,8 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   const SizedBox(height: 14),
                   SettingsCard(
                     title: 'Хранение',
+                    subtitle: 'Автозапуск и размер истории',
+                    icon: Icons.storage_outlined,
                     child: Column(
                       children: [
                         SwitchListTile(
@@ -634,13 +656,18 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   const SizedBox(height: 14),
                   SettingsCard(
                     title: 'О приложении',
+                    subtitle: 'Версия и сборка',
+                    icon: Icons.info_outline,
                     onTap: _onAboutTap,
-                    footer: Text(
-                      '© CopyPastePlus · built with coffee & clipboard 🦇',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'Menlo',
-                        color: palette.muted,
+                    footer: Center(
+                      child: Text(
+                        '© CopyPastePlus · built with coffee & clipboard 🦇',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Menlo',
+                          color: palette.muted,
+                        ),
                       ),
                     ),
                     child: Column(
@@ -660,17 +687,21 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   const SizedBox(height: 14),
                   SettingsCard(
                     title: 'Приложение',
+                    subtitle: 'Полностью закрыть CopyPastePlus',
+                    icon: Icons.power_settings_new,
                     child: SizedBox(
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: _quitApp,
-                        icon: Icon(Icons.power_settings_new, size: 16, color: palette.red),
+                        icon: Icon(Icons.power_settings_new,
+                            size: 16, color: palette.red),
                         label: Text(
                           'Завершить работу',
                           style: TextStyle(fontSize: 13, color: palette.red),
                         ),
                         style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: palette.red.withValues(alpha: 0.45)),
+                          side: BorderSide(
+                              color: palette.red.withValues(alpha: 0.45)),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
@@ -691,13 +722,13 @@ class _SettingsWindowState extends State<SettingsWindow> {
 class _ThemeOption extends StatelessWidget {
   const _ThemeOption({
     required this.label,
-    required this.icon,
     required this.selected,
     required this.onTap,
+    this.description,
   });
 
   final String label;
-  final IconData icon;
+  final String? description;
   final bool selected;
   final VoidCallback onTap;
 
@@ -709,39 +740,76 @@ class _ThemeOption extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
             color: selected
-                ? palette.accent.withValues(alpha: 0.14)
-                : palette.codeBar.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(8),
+                ? palette.accent.withValues(alpha: 0.06)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: selected ? palette.accent : palette.line,
+              color: selected
+                  ? palette.accent.withValues(alpha: 0.75)
+                  : Colors.transparent,
+              width: 1.2,
             ),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: selected ? palette.accent : palette.muted,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? palette.accent : palette.ink,
+              Container(
+                width: 18,
+                height: 18,
+                margin: const EdgeInsets.only(top: 1),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? palette.accent : palette.muted,
+                    width: 2,
                   ),
                 ),
+                child: selected
+                    ? Center(
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: palette.ink,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
-              if (selected)
-                Icon(Icons.check_circle, size: 16, color: palette.accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: palette.ink,
+                      ),
+                    ),
+                    if (description != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        description!,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.35,
+                          color: palette.muted,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         ),

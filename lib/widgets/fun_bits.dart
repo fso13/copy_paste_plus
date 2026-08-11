@@ -151,7 +151,7 @@ class _StatusTickerState extends State<StatusTicker> {
             style: TextStyle(
               fontSize: 11,
               fontFamily: 'Menlo',
-              color: palette.muted,
+              color: palette.green,
             ),
           ),
         ),
