@@ -725,6 +725,87 @@ img {
   font-weight: 650;
 }
 
+.section-changelog {
+  border-top: 1px solid var(--line);
+}
+
+.changelog {
+  border-top: 1px solid var(--line);
+}
+
+.changelog-status {
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.changelog-release {
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.changelog-release:last-child {
+  border-bottom: 0;
+}
+
+.changelog-release h3 {
+  margin: 0 0 0.85rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.changelog-release h3 a {
+  text-decoration: none;
+}
+
+.changelog-date {
+  margin-left: 0.45rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.changelog-group {
+  margin: 0 0 0.9rem;
+}
+
+.changelog-group:last-child {
+  margin-bottom: 0;
+}
+
+.changelog-group h4 {
+  margin: 0 0 0.45rem;
+  color: var(--accent-pink);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.changelog-group ul {
+  margin: 0;
+  padding-left: 1.15rem;
+  color: var(--muted-bright);
+}
+
+.changelog-group li + li {
+  margin-top: 0.28rem;
+}
+
+.changelog-group code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  color: var(--cyan);
+}
+
+.changelog-group a {
+  color: var(--accent);
+}
+
 .site-footer {
   display: flex;
   flex-wrap: wrap;

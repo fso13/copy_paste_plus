@@ -297,11 +297,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
   }
 
   Future<void> _resetToDefaultHotkey() async {
-    final defaultHotkey = HotKey(
-      key: PhysicalKeyboardKey.keyC,
-      modifiers: [HotKeyModifier.meta, HotKeyModifier.shift],
-    );
-    await _hotkeyService.updateHotkey(defaultHotkey);
+    await _hotkeyService.updateHotkey(HotkeyService.defaultHotkey);
     setState(() {
       _updateHotkeyDescription();
     });

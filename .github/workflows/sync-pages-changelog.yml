@@ -1,0 +1,40 @@
+name: Sync Pages changelog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CHANGELOG.md
+      - scripts/sync_pages_changelog.sh
+      - .github/workflows/sync-pages-changelog.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Copy CHANGELOG.md → docs/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync changelog into docs
+        run: |
+          chmod +x scripts/sync_pages_changelog.sh
+          ./scripts/sync_pages_changelog.sh
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- docs/CHANGELOG.md; then
+            echo "docs/CHANGELOG.md already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/CHANGELOG.md
+          git commit -m "docs: sync CHANGELOG to GitHub Pages"
+          git push

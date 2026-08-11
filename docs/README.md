@@ -8,8 +8,15 @@
 | --- | --- |
 | `index.html` | Лендинг |
 | `styles.css` | Стили (Dracula / light, как fso13) |
-| `script.js` | Тема, reveal, glitch, пасхалка |
+| `script.js` | Тема, reveal, glitch, пасхалка, changelog |
+| `CHANGELOG.md` | Копия корневого журнала (автосинк) |
 | `screenshots/` | Скриншоты продукта |
+
+Changelog на сайте читается из `docs/CHANGELOG.md`. При каждом изменении корневого `CHANGELOG.md` workflow **Sync Pages changelog** копирует файл в `docs/`. Локально:
+
+```bash
+./scripts/sync_pages_changelog.sh
+```
 
 ## Включение Pages
 
