@@ -25,9 +25,8 @@
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     
-    <!-- Разрешения для доступа к буферу обмена -->
     <key>NSAppleEventsUsageDescription</key>
-    <string>Приложению требуется доступ к буферу обмена для отслеживания скопированного текста</string>
+    <string>CopyPastePlus использует доступ к системе для автозапуска и авто-вставки выбранного фрагмента в предыдущее приложение.</string>
 
 </dict>
 </plist>

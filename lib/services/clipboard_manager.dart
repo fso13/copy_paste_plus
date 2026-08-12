@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:copy_paste_plus/services/app_settings.dart';
 import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/clipboard_item.dart';
+import '../utils/constants.dart';
 
 class ClipboardManager {
   static final ClipboardManager _instance = ClipboardManager._internal();
@@ -34,6 +36,7 @@ class ClipboardManager {
   }
 
   Future<void> _initialize() async {
+    await AppSettings.instance.load();
     await _loadData();
     await _startRealMonitoring();
     print('ClipboardManager initialized with ${_items.length} items');
@@ -56,6 +59,8 @@ class ClipboardManager {
               content: payload.content,
               html: payload.html,
               rtf: payload.rtf,
+              sourceBundleId: payload.sourceBundleId,
+              sourceAppName: payload.sourceAppName,
             );
           }
         },
@@ -101,6 +106,8 @@ class ClipboardManager {
             content: payload.content,
             html: payload.html,
             rtf: payload.rtf,
+            sourceBundleId: payload.sourceBundleId,
+            sourceAppName: payload.sourceAppName,
           );
         }
       }
@@ -132,8 +139,17 @@ class ClipboardManager {
     required String content,
     String? html,
     String? rtf,
+    String? sourceBundleId,
+    String? sourceAppName,
   }) async {
     if (content.isEmpty) return;
+
+    final settings = AppSettings.instance;
+    if (settings.isIgnored(sourceBundleId)) {
+      print('Ignored clipboard from $sourceBundleId');
+      return;
+    }
+
     if (_items.isNotEmpty && _items.first.content == content) {
       // Refresh rich formats if we previously stored plain-only.
       final first = _items.first;
@@ -148,6 +164,9 @@ class ClipboardManager {
           timestamp: first.timestamp,
           isFavorite: first.isFavorite,
           comment: first.comment,
+          sourceBundleId: first.sourceBundleId ?? sourceBundleId,
+          sourceAppName: first.sourceAppName ?? sourceAppName,
+          isSensitive: first.isSensitive,
         );
         final favIndex = _favorites.indexWhere((item) => item.id == first.id);
         if (favIndex != -1) {
@@ -159,11 +178,17 @@ class ClipboardManager {
       return;
     }
 
+    final isSensitive = settings.isPasswordManager(sourceBundleId) ||
+        MacOSClipboardService.looksLikeSecret(content);
+
     final newItem = ClipboardItem(
       content: content,
       html: html,
       rtf: rtf,
       timestamp: DateTime.now(),
+      sourceBundleId: sourceBundleId,
+      sourceAppName: sourceAppName,
+      isSensitive: isSensitive,
     );
 
     _items.insert(0, newItem);
@@ -254,7 +279,8 @@ class ClipboardManager {
         if (item != null) _favorites.add(item);
       }
 
-      _maxItems = prefs.getInt('max_items') ?? 28;
+      _maxItems = prefs.getInt('max_items') ?? AppConstants.defaultMaxItems;
+      if (_maxItems < 10) _maxItems = 10;
       _items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       print(
@@ -351,6 +377,27 @@ class ClipboardManager {
     for (final item in _favorites) {
       if (item.id == itemId) {
         item.comment = value;
+        updated = true;
+      }
+    }
+
+    if (!updated) return;
+    await _saveData();
+    refreshStreams();
+  }
+
+  /// Marks / unmarks an item as secret (masked in UI when masking is on).
+  Future<void> setItemSensitive(String itemId, bool sensitive) async {
+    var updated = false;
+    for (final item in _items) {
+      if (item.id == itemId) {
+        item.isSensitive = sensitive;
+        updated = true;
+      }
+    }
+    for (final item in _favorites) {
+      if (item.id == itemId) {
+        item.isSensitive = sensitive;
         updated = true;
       }
     }

@@ -1,8 +1,7 @@
-import 'dart:io';
-
 import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/hotkey_service.dart';
+import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:copy_paste_plus/services/theme_service.dart';
 import 'package:copy_paste_plus/services/update_service.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
@@ -15,8 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'dart:io';
 
 class SettingsWindow extends StatefulWidget {
   final VoidCallback onClose;
@@ -35,6 +34,9 @@ class _SettingsWindowState extends State<SettingsWindow> {
 
   late int _maxItems;
   bool _launchAtStartup = false;
+  bool _launchAtLoginSupported = true;
+  bool _autoPasteEnabled = false;
+  bool _maskSensitiveEnabled = true;
   bool _isRecording = false;
   bool _checkingUpdates = false;
   String _currentHotkeyDescription = '';
@@ -42,6 +44,8 @@ class _SettingsWindowState extends State<SettingsWindow> {
   String _buildNumber = '';
   int _aboutClicks = 0;
   bool _party = false;
+  List<String> _ignoredBundleIds = [];
+  Map<String, String> _ignoredAppNames = {};
 
   final List<HotKeyModifier> _recordedModifiers = [];
   PhysicalKeyboardKey? _recordedKey;
@@ -77,8 +81,13 @@ class _SettingsWindowState extends State<SettingsWindow> {
   }
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    _launchAtStartup = prefs.getBool('auto_start_enabled') ?? false;
+    await appSettings.load();
+    final launch = await MacOSClipboardService.getLaunchAtLogin();
+    _launchAtLoginSupported = launch.supported ?? true;
+    _launchAtStartup = launch.enabled ?? await appSettings.getAutoStartEnabled();
+    _autoPasteEnabled = appSettings.autoPasteEnabled;
+    _maskSensitiveEnabled = appSettings.maskSensitiveEnabled;
+    _ignoredBundleIds = appSettings.ignoredBundleIds.toList()..sort();
     setState(() {});
   }
 
@@ -91,9 +100,124 @@ class _SettingsWindowState extends State<SettingsWindow> {
   }
 
   Future<void> _setAutoStartEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('auto_start_enabled', enabled);
-    setState(() => _launchAtStartup = enabled);
+    final result = await MacOSClipboardService.setLaunchAtLogin(enabled);
+    if (!result.ok) {
+      _showSnack(result.error ?? 'Не удалось изменить автозапуск');
+      final current = await MacOSClipboardService.getLaunchAtLogin();
+      setState(() {
+        _launchAtStartup = current.enabled ?? false;
+        _launchAtLoginSupported = current.supported ?? false;
+      });
+      return;
+    }
+    await appSettings.setAutoStartEnabled(result.enabled ?? enabled);
+    setState(() {
+      _launchAtStartup = result.enabled ?? enabled;
+      _launchAtLoginSupported = result.supported ?? true;
+    });
+  }
+
+  Future<void> _setAutoPasteEnabled(bool enabled) async {
+    if (enabled) {
+      var trusted = await MacOSClipboardService.isAccessibilityTrusted();
+      if (!trusted) {
+        trusted = await MacOSClipboardService.requestAccessibility();
+      }
+      if (!trusted) {
+        _showSnack(
+          'Для авто-вставки нужен Универсальный доступ в настройках macOS',
+        );
+        await MacOSClipboardService.openAccessibilitySettings();
+      }
+    }
+    await appSettings.setAutoPasteEnabled(enabled);
+    setState(() => _autoPasteEnabled = enabled);
+  }
+
+  Future<void> _setMaskSensitiveEnabled(bool enabled) async {
+    await appSettings.setMaskSensitiveEnabled(enabled);
+    setState(() => _maskSensitiveEnabled = enabled);
+  }
+
+  Future<void> _removeIgnoredApp(String bundleId) async {
+    await appSettings.removeIgnoredBundleId(bundleId);
+    setState(() {
+      _ignoredBundleIds = appSettings.ignoredBundleIds.toList()..sort();
+      _ignoredAppNames.remove(bundleId);
+    });
+  }
+
+  Future<void> _resetIgnoredApps() async {
+    await appSettings.resetIgnoredToDefaults();
+    setState(() {
+      _ignoredBundleIds = appSettings.ignoredBundleIds.toList()..sort();
+      _ignoredAppNames.clear();
+    });
+    _showSnack('Список игнора сброшен к значениям по умолчанию');
+  }
+
+  Future<void> _addIgnoredApp() async {
+    final apps = await MacOSClipboardService.listRunningApps();
+    final available = apps
+        .where((a) => !_ignoredBundleIds.contains(a.bundleId))
+        .toList();
+    if (!mounted) return;
+
+    if (available.isEmpty) {
+      _showSnack('Нет запущенных приложений для добавления');
+      return;
+    }
+
+    final palette = context.palette;
+    final selected = await showDialog<RunningAppInfo>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Игнорировать приложение'),
+          content: SizedBox(
+            width: 360,
+            height: 320,
+            child: ListView.builder(
+              itemCount: available.length,
+              itemBuilder: (context, index) {
+                final app = available[index];
+                return ListTile(
+                  dense: true,
+                  title: Text(
+                    app.name?.isNotEmpty == true ? app.name! : app.bundleId,
+                    style: TextStyle(fontSize: 13, color: palette.ink),
+                  ),
+                  subtitle: Text(
+                    app.bundleId,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'Menlo',
+                      color: palette.muted,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(context, app),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Отмена', style: TextStyle(color: palette.muted)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selected == null) return;
+    await appSettings.addIgnoredBundleId(selected.bundleId);
+    setState(() {
+      _ignoredBundleIds = appSettings.ignoredBundleIds.toList()..sort();
+      if (selected.name != null && selected.name!.isNotEmpty) {
+        _ignoredAppNames[selected.bundleId] = selected.name!;
+      }
+    });
   }
 
   void _onAboutTap() {
@@ -609,6 +733,41 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   ),
                   const SizedBox(height: 14),
                   SettingsCard(
+                    title: 'Вставка',
+                    subtitle: 'Поведение при выборе элемента',
+                    icon: Icons.keyboard_return,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Авто-вставка',
+                            style: TextStyle(fontSize: 13, color: palette.ink),
+                          ),
+                          subtitle: Text(
+                            'После выбора сразу вставить ⌘V в предыдущее приложение. Можно отключить.',
+                            style: TextStyle(fontSize: 11, color: palette.muted),
+                          ),
+                          value: _autoPasteEnabled,
+                          onChanged: _setAutoPasteEnabled,
+                        ),
+                        if (_autoPasteEnabled)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              'Нужен Универсальный доступ в настройках macOS.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: palette.muted,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SettingsCard(
                     title: 'Хранение',
                     subtitle: 'Автозапуск и размер истории',
                     icon: Icons.storage_outlined,
@@ -620,8 +779,19 @@ class _SettingsWindowState extends State<SettingsWindow> {
                             'Запуск при старте системы',
                             style: TextStyle(fontSize: 13, color: palette.ink),
                           ),
+                          subtitle: !_launchAtLoginSupported
+                              ? Text(
+                                  'Требуется macOS 13 или новее',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: palette.muted,
+                                  ),
+                                )
+                              : null,
                           value: _launchAtStartup,
-                          onChanged: _setAutoStartEnabled,
+                          onChanged: _launchAtLoginSupported
+                              ? _setAutoStartEnabled
+                              : null,
                         ),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -649,6 +819,97 @@ class _SettingsWindowState extends State<SettingsWindow> {
                               color: palette.accent,
                             ),
                           ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SettingsCard(
+                    title: 'Приватность',
+                    subtitle: 'Игнор приложений и маскировка',
+                    icon: Icons.shield_outlined,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Маскировать чувствительные данные',
+                            style: TextStyle(fontSize: 13, color: palette.ink),
+                          ),
+                          subtitle: Text(
+                            'Пароли и токены показываются как •••• (можно раскрыть глазом)',
+                            style: TextStyle(fontSize: 11, color: palette.muted),
+                          ),
+                          value: _maskSensitiveEnabled,
+                          onChanged: _setMaskSensitiveEnabled,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Игнорировать копирование из',
+                          style: TextStyle(fontSize: 13, color: palette.ink),
+                        ),
+                        const SizedBox(height: 6),
+                        if (_ignoredBundleIds.isEmpty)
+                          Text(
+                            'Список пуст — всё попадает в историю',
+                            style: TextStyle(fontSize: 11, color: palette.muted),
+                          )
+                        else
+                          ..._ignoredBundleIds.map((id) {
+                            final label = _ignoredAppNames[id] ?? id;
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              title: Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: palette.ink,
+                                ),
+                              ),
+                              subtitle: label == id
+                                  ? null
+                                  : Text(
+                                      id,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontFamily: 'Menlo',
+                                        color: palette.muted,
+                                      ),
+                                    ),
+                              trailing: IconButton(
+                                icon: Icon(Icons.close,
+                                    size: 16, color: palette.muted),
+                                onPressed: () => _removeIgnoredApp(id),
+                                tooltip: 'Убрать',
+                              ),
+                            );
+                          }),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _addIgnoredApp,
+                              icon: Icon(Icons.add, size: 16, color: palette.ink),
+                              label: Text(
+                                'Добавить',
+                                style:
+                                    TextStyle(fontSize: 12, color: palette.ink),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: _resetIgnoredApps,
+                              child: Text(
+                                'Сбросить',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: palette.muted,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

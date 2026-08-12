@@ -11,6 +11,10 @@ class ClipboardItem {
   bool isFavorite;
   /// Freeform note for favorites (shown under content).
   String? comment;
+  final String? sourceBundleId;
+  final String? sourceAppName;
+  /// Hide content in UI when masking is enabled.
+  bool isSensitive;
 
   ClipboardItem({
     String? id,
@@ -20,6 +24,9 @@ class ClipboardItem {
     required this.timestamp,
     this.isFavorite = false,
     this.comment,
+    this.sourceBundleId,
+    this.sourceAppName,
+    this.isSensitive = false,
   }) : id = id ?? const Uuid().v4();
 
   bool get hasRichText =>
@@ -32,6 +39,8 @@ class ClipboardItem {
     if (content.length <= maxLength) return content;
     return '${content.substring(0, maxLength)}...';
   }
+
+  String get maskedPreview => '••••••••••••';
 
   String get timeAgo {
     final now = DateTime.now();
@@ -52,6 +61,11 @@ class ClipboardItem {
         'timestamp': timestamp.toIso8601String(),
         'isFavorite': isFavorite,
         if (hasComment) 'comment': comment,
+        if (sourceBundleId != null && sourceBundleId!.isNotEmpty)
+          'sourceBundleId': sourceBundleId,
+        if (sourceAppName != null && sourceAppName!.isNotEmpty)
+          'sourceAppName': sourceAppName,
+        if (isSensitive) 'isSensitive': true,
       };
 
   factory ClipboardItem.fromJson(Map<String, dynamic> json) {
@@ -66,6 +80,10 @@ class ClipboardItem {
         ),
         isFavorite: json['isFavorite'] == true || json['isFavorite'] == 'true',
         comment: _optionalString(json['comment']),
+        sourceBundleId: _optionalString(json['sourceBundleId']),
+        sourceAppName: _optionalString(json['sourceAppName']),
+        isSensitive:
+            json['isSensitive'] == true || json['isSensitive'] == 'true',
       );
     } catch (e) {
       print('Error creating ClipboardItem from JSON: $e');

@@ -20,4 +20,26 @@ class AppConstants {
 
   /// How often to poll GitHub for a newer release.
   static const Duration updateCheckInterval = Duration(hours: 12);
+
+  /// Bundle IDs that typically hold secrets — ignored from history by default.
+  static const Set<String> passwordManagerBundleIds = {
+    'com.1password.1password',
+    'com.1password.1password-launcher',
+    'com.agilebits.onepassword7',
+    'com.agilebits.onepassword-safari-v2',
+    'com.bitwarden.desktop',
+    'com.bitwarden.desktop.safari',
+    'com.lastpass.LastPass',
+    'com.dashlane.dashlanephonefinal',
+    'org.keepassx.keepassxc',
+    'com.apple.keychainaccess',
+    'com.nordpass.macos.NordPass',
+    'com.enpass.desktop',
+    'com.protonpass.safari',
+  };
+
+  /// Default ignore list (password managers + a few common vault UIs).
+  static const Set<String> defaultIgnoredBundleIds = {
+    ...passwordManagerBundleIds,
+  };
 }

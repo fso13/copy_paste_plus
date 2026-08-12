@@ -1,6 +1,7 @@
 import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/hotkey_service.dart';
+import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:copy_paste_plus/services/system_tray_service.dart';
 import 'package:copy_paste_plus/services/theme_service.dart';
 import 'package:copy_paste_plus/services/update_service.dart';
@@ -113,29 +114,38 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
     }
   }
 
-  void _toggleWindow() {
+  Future<void> _toggleWindow() async {
+    final willShow = !_showWindow;
+    if (willShow) {
+      // Capture before we steal focus — needed for auto-paste.
+      await MacOSClipboardService.captureFrontmostApp();
+    }
+
     setState(() {
-      _showWindow = !_showWindow;
+      _showWindow = willShow;
       _showSettings = false;
     });
 
     if (_showWindow) {
-      windowManager.show();
-      windowManager.focus();
-      _clipboardManager.ensureControllersActive();
+      await windowManager.show();
+      await windowManager.focus();
+      await _clipboardManager.ensureControllersActive();
       _clipboardManager.refreshStreams();
     } else {
-      windowManager.hide();
+      await windowManager.hide();
     }
   }
 
-  void _openSettings() {
+  Future<void> _openSettings() async {
+    if (!_showWindow) {
+      await MacOSClipboardService.captureFrontmostApp();
+    }
     setState(() {
       _showSettings = true;
       _showWindow = true;
     });
-    windowManager.show();
-    windowManager.focus();
+    await windowManager.show();
+    await windowManager.focus();
   }
 
   void _closeSettings() {

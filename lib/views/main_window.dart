@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math';
 import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/models/clipboard_item.dart';
+import 'package:copy_paste_plus/services/app_settings.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
+import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
 import 'package:copy_paste_plus/widgets/app_panel.dart';
 import 'package:copy_paste_plus/widgets/brand_mark.dart';
@@ -29,13 +31,18 @@ class _MainWindowState extends State<MainWindow>
   final ClipboardManager _clipboardManager = clipboardManager;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
+  final FocusNode _listFocusNode = FocusNode();
+  final ScrollController _historyScrollController = ScrollController();
+  final ScrollController _favoritesScrollController = ScrollController();
 
   StreamSubscription<List<ClipboardItem>>? _subscription;
 
   late TabController _tabController;
   int _currentTabIndex = 0;
+  int _selectedIndex = 0;
   late final String _emptyHistoryJoke;
   late final String _emptyFavoritesJoke;
+  final Set<String> _revealedSensitiveIds = {};
 
   @override
   void initState() {
@@ -47,12 +54,16 @@ class _MainWindowState extends State<MainWindow>
         emptyFavoritesJokes[rng.nextInt(emptyFavoritesJokes.length)];
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChange);
+    _searchFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
     _subscribeToStream();
   }
 
   void _handleTabChange() {
     setState(() {
       _currentTabIndex = _tabController.index;
+      _selectedIndex = 0;
     });
   }
 
@@ -77,6 +88,13 @@ class _MainWindowState extends State<MainWindow>
     }).toList();
   }
 
+  List<ClipboardItem> get _visibleItems {
+    final isHistoryTab = _currentTabIndex == 0;
+    return _filtered(
+      isHistoryTab ? _clipboardManager.items : _clipboardManager.favorites,
+    );
+  }
+
   void _clearSearch() {
     _searchController.clear();
     if (mounted) setState(() {});
@@ -88,6 +106,116 @@ class _MainWindowState extends State<MainWindow>
       baseOffset: 0,
       extentOffset: _searchController.text.length,
     );
+  }
+
+  void _moveSelection(int delta, int itemCount) {
+    if (itemCount == 0) return;
+    setState(() {
+      _selectedIndex = (_selectedIndex + delta).clamp(0, itemCount - 1);
+    });
+    _ensureSelectedVisible();
+  }
+
+  ScrollController get _activeScrollController =>
+      _currentTabIndex == 0 ? _historyScrollController : _favoritesScrollController;
+
+  void _ensureSelectedVisible() {
+    final scrollController = _activeScrollController;
+    if (!scrollController.hasClients) return;
+    const itemExtent = 78.0;
+    final target = _selectedIndex * itemExtent;
+    final viewHeight = scrollController.position.viewportDimension;
+    final current = scrollController.offset;
+    if (target < current) {
+      scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    } else if (target + itemExtent > current + viewHeight) {
+      scrollController.animateTo(
+        (target + itemExtent - viewHeight).clamp(
+          0.0,
+          scrollController.position.maxScrollExtent,
+        ),
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  Future<void> _activateSelected(List<ClipboardItem> items) async {
+    if (items.isEmpty) return;
+    final index = _selectedIndex.clamp(0, items.length - 1);
+    await _handleItemTap(items[index]);
+  }
+
+  bool get _searchHasFocus => _searchFocusNode.hasFocus;
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final items = _visibleItems;
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.escape) {
+      if (_searchHasFocus) {
+        _searchFocusNode.unfocus();
+        _listFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      widget.onClose();
+      return KeyEventResult.handled;
+    }
+
+    if (_searchHasFocus) {
+      return KeyEventResult.ignored;
+    }
+
+    if (key == LogicalKeyboardKey.arrowDown) {
+      _moveSelection(1, items.length);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowUp) {
+      _moveSelection(-1, items.length);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter) {
+      _activateSelected(items);
+      return KeyEventResult.handled;
+    }
+
+    final digitMap = <LogicalKeyboardKey, int>{
+      LogicalKeyboardKey.digit1: 0,
+      LogicalKeyboardKey.digit2: 1,
+      LogicalKeyboardKey.digit3: 2,
+      LogicalKeyboardKey.digit4: 3,
+      LogicalKeyboardKey.digit5: 4,
+      LogicalKeyboardKey.digit6: 5,
+      LogicalKeyboardKey.digit7: 6,
+      LogicalKeyboardKey.digit8: 7,
+      LogicalKeyboardKey.digit9: 8,
+      LogicalKeyboardKey.numpad1: 0,
+      LogicalKeyboardKey.numpad2: 1,
+      LogicalKeyboardKey.numpad3: 2,
+      LogicalKeyboardKey.numpad4: 3,
+      LogicalKeyboardKey.numpad5: 4,
+      LogicalKeyboardKey.numpad6: 5,
+      LogicalKeyboardKey.numpad7: 6,
+      LogicalKeyboardKey.numpad8: 7,
+      LogicalKeyboardKey.numpad9: 8,
+    };
+
+    final quickIndex = digitMap[key];
+    if (quickIndex != null && quickIndex < items.length) {
+      _handleItemTap(items[quickIndex]);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   Future<void> _clearHistory() async {
@@ -140,6 +268,7 @@ class _MainWindowState extends State<MainWindow>
   }
 
   void _showSnack(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
@@ -150,6 +279,9 @@ class _MainWindowState extends State<MainWindow>
     _tabController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _listFocusNode.dispose();
+    _historyScrollController.dispose();
+    _favoritesScrollController.dispose();
     _subscription?.cancel();
     super.dispose();
   }
@@ -160,9 +292,13 @@ class _MainWindowState extends State<MainWindow>
     final historyItems = _filtered(_clipboardManager.items);
     final favoriteItems = _filtered(_clipboardManager.favorites);
     final isHistoryTab = _currentTabIndex == 0;
-    final visibleCount =
-        isHistoryTab ? historyItems.length : favoriteItems.length;
+    final visibleItems = isHistoryTab ? historyItems : favoriteItems;
+    final visibleCount = visibleItems.length;
     final hasItems = visibleCount > 0;
+
+    if (_selectedIndex >= visibleCount && visibleCount > 0) {
+      _selectedIndex = visibleCount - 1;
+    }
 
     return CallbackShortcuts(
       bindings: {
@@ -171,7 +307,9 @@ class _MainWindowState extends State<MainWindow>
             _focusSearch,
       },
       child: Focus(
+        focusNode: _listFocusNode,
         autofocus: true,
+        onKeyEvent: _onKeyEvent,
         child: Scaffold(
           backgroundColor: Colors.transparent,
           body: AppPanel(
@@ -201,7 +339,9 @@ class _MainWindowState extends State<MainWindow>
                   child: _SearchField(
                     controller: _searchController,
                     focusNode: _searchFocusNode,
-                    onChanged: (_) => setState(() {}),
+                    onChanged: (_) => setState(() {
+                      _selectedIndex = 0;
+                    }),
                     onClear: _clearSearch,
                   ),
                 ),
@@ -295,7 +435,10 @@ class _MainWindowState extends State<MainWindow>
                   child: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildItemsList(historyItems, 'истории'),
+                      _buildItemsList(
+                        historyItems,
+                        scrollController: _historyScrollController,
+                      ),
                       _buildFavoritesTab(favoriteItems),
                     ],
                   ),
@@ -337,10 +480,16 @@ class _MainWindowState extends State<MainWindow>
         subtitle: 'Добавляйте элементы в избранное звездочкой ✨',
       );
     }
-    return _buildItemsList(items, 'избранном');
+    return _buildItemsList(
+      items,
+      scrollController: _favoritesScrollController,
+    );
   }
 
-  Widget _buildItemsList(List<ClipboardItem> items, String listType) {
+  Widget _buildItemsList(
+    List<ClipboardItem> items, {
+    required ScrollController scrollController,
+  }) {
     if (items.isEmpty) {
       final message = _searchController.text.isEmpty
           ? _emptyHistoryJoke
@@ -355,29 +504,95 @@ class _MainWindowState extends State<MainWindow>
       );
     }
 
+    final maskSensitive = AppSettings.instance.maskSensitiveEnabled;
+
     return ListView.separated(
+      controller: scrollController,
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
       itemCount: items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (context, index) {
         final item = items[index];
+        final masked = maskSensitive &&
+            item.isSensitive &&
+            !_revealedSensitiveIds.contains(item.id);
         return _ClipboardItemTile(
           item: item,
+          index: index,
+          selected: index == _selectedIndex,
+          masked: masked,
           onTap: () => _handleItemTap(item),
           onShowMenu: () => _showItemOptions(item),
           onToggleFavorite: () async {
             await _clipboardManager.toggleFavorite(item.id);
             if (mounted) setState(() {});
           },
+          onToggleReveal: item.isSensitive && maskSensitive
+              ? () {
+                  setState(() {
+                    if (_revealedSensitiveIds.contains(item.id)) {
+                      _revealedSensitiveIds.remove(item.id);
+                    } else {
+                      _revealedSensitiveIds.add(item.id);
+                    }
+                  });
+                }
+              : null,
         );
       },
     );
   }
 
   Future<void> _handleItemTap(ClipboardItem item) async {
+    final autoPaste = AppSettings.instance.autoPasteEnabled;
+
+    if (autoPaste) {
+      var trusted = await MacOSClipboardService.isAccessibilityTrusted();
+      if (!trusted) {
+        trusted = await MacOSClipboardService.requestAccessibility();
+      }
+      if (!trusted && mounted) {
+        final palette = context.palette;
+        await showDialog<void>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Нужен Универсальный доступ'),
+            content: const Text(
+              'Для авто-вставки разрешите CopyPastePlus в '
+              'Системные настройки → Конфиденциальность → Универсальный доступ.\n\n'
+              'Сейчас фрагмент будет только скопирован в буфер.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Позже', style: TextStyle(color: palette.muted)),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  MacOSClipboardService.openAccessibilitySettings();
+                },
+                child: Text(
+                  'Открыть настройки',
+                  style: TextStyle(color: palette.accent),
+                ),
+              ),
+            ],
+          ),
+        );
+        await _clipboardManager.copyToClipboard(item);
+        widget.onClose();
+        return;
+      }
+    }
+
     await _clipboardManager.copyToClipboard(item);
     widget.onClose();
-    _showSnack('Скопировано в буфер обмена');
+
+    if (autoPaste) {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await MacOSClipboardService.pasteToPreviousApp();
+    }
   }
 
   void _showItemOptions(ClipboardItem item) {
@@ -394,15 +609,23 @@ class _MainWindowState extends State<MainWindow>
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: palette.line),
             boxShadow: [
-              BoxShadow(color: palette.shadow, blurRadius: 16, spreadRadius: 2),
+              BoxShadow(
+                color: palette.shadow,
+                blurRadius: 16,
+                offset: const Offset(0, 2),
+              ),
             ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: Icon(Icons.content_copy, size: 20, color: palette.cyan),
-                title: Text('Копировать', style: TextStyle(color: palette.ink, fontSize: 14)),
+                leading:
+                    Icon(Icons.content_copy, size: 20, color: palette.cyan),
+                title: Text(
+                  'Копировать',
+                  style: TextStyle(color: palette.ink, fontSize: 14),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _handleItemTap(item);
@@ -415,7 +638,9 @@ class _MainWindowState extends State<MainWindow>
                   color: item.isFavorite ? palette.yellow : palette.mutedBright,
                 ),
                 title: Text(
-                  item.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное',
+                  item.isFavorite
+                      ? 'Убрать из избранного'
+                      : 'Добавить в избранное',
                   style: TextStyle(color: palette.ink, fontSize: 14),
                 ),
                 onTap: () async {
@@ -443,7 +668,48 @@ class _MainWindowState extends State<MainWindow>
                   },
                 ),
               ListTile(
-                leading: Icon(Icons.delete_outline, size: 20, color: palette.red),
+                leading: Icon(
+                  item.isSensitive
+                      ? Icons.lock_open_outlined
+                      : Icons.lock_outline,
+                  size: 20,
+                  color: item.isSensitive ? palette.yellow : palette.mutedBright,
+                ),
+                title: Text(
+                  item.isSensitive
+                      ? 'Снять тип secret'
+                      : 'Сделать типом secret',
+                  style: TextStyle(color: palette.ink, fontSize: 14),
+                ),
+                subtitle: Text(
+                  item.isSensitive
+                      ? 'Показывать как обычный текст'
+                      : 'Маскировать содержимое (пароль / токен)',
+                  style: TextStyle(fontSize: 11, color: palette.muted),
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final makeSecret = !item.isSensitive;
+                  await _clipboardManager.setItemSensitive(
+                    item.id,
+                    makeSecret,
+                  );
+                  if (!mounted) return;
+                  setState(() {
+                    if (makeSecret) {
+                      _revealedSensitiveIds.remove(item.id);
+                    }
+                  });
+                  _showSnack(
+                    makeSecret
+                        ? 'Тип изменён на secret'
+                        : 'Тип secret снят',
+                  );
+                },
+              ),
+              ListTile(
+                leading:
+                    Icon(Icons.delete_outline, size: 20, color: palette.red),
                 title: Text(
                   'Удалить',
                   style: TextStyle(fontSize: 14, color: palette.red),
@@ -731,15 +997,23 @@ String _detectContentType(String content) {
 class _ClipboardItemTile extends StatefulWidget {
   const _ClipboardItemTile({
     required this.item,
+    required this.index,
+    required this.selected,
+    required this.masked,
     required this.onTap,
     required this.onShowMenu,
     required this.onToggleFavorite,
+    this.onToggleReveal,
   });
 
   final ClipboardItem item;
+  final int index;
+  final bool selected;
+  final bool masked;
   final VoidCallback onTap;
   final VoidCallback onShowMenu;
   final VoidCallback onToggleFavorite;
+  final VoidCallback? onToggleReveal;
 
   @override
   State<_ClipboardItemTile> createState() => _ClipboardItemTileState();
@@ -752,7 +1026,10 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final item = widget.item;
-    final type = _detectContentType(item.content);
+    final type =
+        item.isSensitive ? 'secret' : _detectContentType(item.content);
+    final highlighted = widget.selected || _hovered;
+    final shortcutLabel = widget.index < 9 ? '${widget.index + 1}' : null;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -767,14 +1044,17 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
             duration: const Duration(milliseconds: 140),
             padding: const EdgeInsets.fromLTRB(0, 10, 4, 10),
             decoration: BoxDecoration(
-              color: _hovered
-                  ? palette.current.withValues(alpha: 0.45)
+              color: highlighted
+                  ? palette.current.withValues(alpha: 0.55)
                   : palette.bgElevated.withValues(alpha: 0.42),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: _hovered
-                    ? palette.accent.withValues(alpha: 0.4)
-                    : palette.line.withValues(alpha: 0.75),
+                color: widget.selected
+                    ? palette.accent.withValues(alpha: 0.7)
+                    : highlighted
+                        ? palette.accent.withValues(alpha: 0.4)
+                        : palette.line.withValues(alpha: 0.75),
+                width: widget.selected ? 1.4 : 1,
               ),
             ),
             child: IntrinsicHeight(
@@ -783,24 +1063,44 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                 children: [
                   Container(
                     width: 3.5,
-                    margin: const EdgeInsets.only(left: 2, right: 10),
+                    margin: const EdgeInsets.only(left: 2, right: 8),
                     decoration: BoxDecoration(
                       color: palette.accent,
                       borderRadius: BorderRadius.circular(2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: palette.accent.withValues(alpha: 0.35),
-                          blurRadius: 6,
-                        ),
-                      ],
                     ),
                   ),
+                  if (shortcutLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: 18,
+                          height: 18,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: palette.current.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: palette.line),
+                          ),
+                          child: Text(
+                            shortcutLabel,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'Menlo',
+                              fontWeight: FontWeight.w600,
+                              color: palette.mutedBright,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          item.preview,
+                          widget.masked ? item.maskedPreview : item.preview,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -808,6 +1108,7 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                             height: 1.4,
                             color: palette.ink,
                             fontFamily: 'Menlo',
+                            letterSpacing: widget.masked ? 1.2 : null,
                           ),
                         ),
                         if (item.hasComment) ...[
@@ -863,6 +1164,22 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (widget.onToggleReveal != null)
+                        IconButton(
+                          icon: Icon(
+                            widget.masked
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 17,
+                            color: palette.muted,
+                          ),
+                          onPressed: widget.onToggleReveal,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minWidth: 28, minHeight: 28),
+                          splashRadius: 14,
+                          tooltip: widget.masked ? 'Показать' : 'Скрыть',
+                        ),
                       IconButton(
                         icon: Icon(
                           item.isFavorite
