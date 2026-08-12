@@ -48,6 +48,8 @@ class _MainWindowState extends State<MainWindow>
   late final String _emptyHistoryJoke;
   late final String _emptyFavoritesJoke;
   final Set<String> _revealedSensitiveIds = {};
+  /// Favorites org filter: `null` = all, `pin`, `folder:<name>`, `tag:<name>`.
+  String? _favoritesOrgFilter;
 
   bool get _isSnippetsTab => _currentTabIndex == 2;
 
@@ -78,6 +80,7 @@ class _MainWindowState extends State<MainWindow>
     setState(() {
       _currentTabIndex = _tabController.index;
       _selectedIndex = 0;
+      if (_currentTabIndex != 1) _favoritesOrgFilter = null;
     });
   }
 
@@ -98,8 +101,45 @@ class _MainWindowState extends State<MainWindow>
     return items.where((item) {
       if (item.content.toLowerCase().contains(searchQuery)) return true;
       final comment = item.comment;
-      return comment != null && comment.toLowerCase().contains(searchQuery);
+      if (comment != null && comment.toLowerCase().contains(searchQuery)) {
+        return true;
+      }
+      if (item.hasFolder &&
+          item.folder!.toLowerCase().contains(searchQuery)) {
+        return true;
+      }
+      for (final tag in item.tags) {
+        if (tag.toLowerCase().contains(searchQuery)) return true;
+        if ('#$tag'.toLowerCase().contains(searchQuery)) return true;
+      }
+      return false;
     }).toList();
+  }
+
+  List<ClipboardItem> _applyFavoritesOrgFilter(List<ClipboardItem> items) {
+    final filter = _favoritesOrgFilter;
+    if (filter == null) return items;
+    if (filter == 'pin') {
+      return items.where((item) => item.isPinned).toList();
+    }
+    if (filter.startsWith('folder:')) {
+      final name = filter.substring('folder:'.length).toLowerCase();
+      return items
+          .where(
+            (item) =>
+                item.hasFolder && item.folder!.toLowerCase() == name,
+          )
+          .toList();
+    }
+    if (filter.startsWith('tag:')) {
+      final name = filter.substring('tag:'.length).toLowerCase();
+      return items
+          .where(
+            (item) => item.tags.any((tag) => tag.toLowerCase() == name),
+          )
+          .toList();
+    }
+    return items;
   }
 
   List<ClipboardItem> get _visibleItems {
@@ -107,7 +147,9 @@ class _MainWindowState extends State<MainWindow>
       return _filtered(_clipboardManager.items);
     }
     if (_currentTabIndex == 1) {
-      return _filtered(_clipboardManager.favorites);
+      return _filtered(
+        _applyFavoritesOrgFilter(_clipboardManager.favorites),
+      );
     }
     return const [];
   }
@@ -343,7 +385,9 @@ class _MainWindowState extends State<MainWindow>
   Widget build(BuildContext context) {
     final palette = context.palette;
     final historyItems = _filtered(_clipboardManager.items);
-    final favoriteItems = _filtered(_clipboardManager.favorites);
+    final favoriteItems = _filtered(
+      _applyFavoritesOrgFilter(_clipboardManager.favorites),
+    );
     final snippets = _visibleSnippets;
     final isHistoryTab = _currentTabIndex == 0;
     final isFavoritesTab = _currentTabIndex == 1;
@@ -577,9 +621,93 @@ class _MainWindowState extends State<MainWindow>
         subtitle: 'Добавляйте элементы в избранное звездочкой ✨',
       );
     }
-    return _buildItemsList(
-      items,
-      scrollController: _favoritesScrollController,
+
+    final showFilters = _clipboardManager.hasPinnedFavorites ||
+        _clipboardManager.allFavoriteFolders.isNotEmpty ||
+        _clipboardManager.allFavoriteTags.isNotEmpty ||
+        _favoritesOrgFilter != null;
+
+    return Column(
+      children: [
+        if (showFilters) _buildFavoritesFilterBar(),
+        Expanded(
+          child: items.isEmpty
+              ? _EmptyState(
+                  icon: Icons.filter_alt_off_outlined,
+                  title: _searchController.text.isNotEmpty
+                      ? 'Ничего не найдено для "${_searchController.text}" 🕵️'
+                      : 'Нет элементов в этом фильтре',
+                  subtitle: _favoritesOrgFilter != null
+                      ? 'Сбросьте фильтр или добавьте pin / папку / тег'
+                      : null,
+                )
+              : _buildItemsList(
+                  items,
+                  scrollController: _favoritesScrollController,
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFavoritesFilterBar() {
+    final palette = context.palette;
+    final folders = _clipboardManager.allFavoriteFolders;
+    final tags = _clipboardManager.allFavoriteTags;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 0),
+      child: SizedBox(
+        height: 30,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: [
+            _OrgFilterChip(
+              label: 'Все',
+              selected: _favoritesOrgFilter == null,
+              onTap: () => setState(() {
+                _favoritesOrgFilter = null;
+                _selectedIndex = 0;
+              }),
+            ),
+            if (_clipboardManager.hasPinnedFavorites) ...[
+              const SizedBox(width: 6),
+              _OrgFilterChip(
+                label: '📌 Pin',
+                selected: _favoritesOrgFilter == 'pin',
+                onTap: () => setState(() {
+                  _favoritesOrgFilter = 'pin';
+                  _selectedIndex = 0;
+                }),
+              ),
+            ],
+            for (final folder in folders) ...[
+              const SizedBox(width: 6),
+              _OrgFilterChip(
+                label: folder,
+                icon: Icons.folder_outlined,
+                selected: _favoritesOrgFilter == 'folder:$folder',
+                onTap: () => setState(() {
+                  _favoritesOrgFilter = 'folder:$folder';
+                  _selectedIndex = 0;
+                }),
+              ),
+            ],
+            for (final tag in tags) ...[
+              const SizedBox(width: 6),
+              _OrgFilterChip(
+                label: '#$tag',
+                selected: _favoritesOrgFilter == 'tag:$tag',
+                accentColor: palette.cyan,
+                onTap: () => setState(() {
+                  _favoritesOrgFilter = 'tag:$tag';
+                  _selectedIndex = 0;
+                }),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1033,9 +1161,10 @@ class _MainWindowState extends State<MainWindow>
             color: palette.bgElevated,
             borderRadius: BorderRadius.circular(12),
             clipBehavior: Clip.antiAlias,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 ListTile(
                   leading: Icon(Icons.content_copy,
                       size: 20, color: palette.cyan),
@@ -1083,6 +1212,88 @@ class _MainWindowState extends State<MainWindow>
                     onTap: () {
                       Navigator.pop(context);
                       _editFavoriteComment(item);
+                    },
+                  ),
+                if (item.isFavorite)
+                  ListTile(
+                    leading: Icon(
+                      item.isPinned
+                          ? Icons.push_pin
+                          : Icons.push_pin_outlined,
+                      size: 20,
+                      color: item.isPinned
+                          ? palette.orange
+                          : palette.mutedBright,
+                    ),
+                    title: Text(
+                      item.isPinned ? 'Открепить' : 'Закрепить',
+                      style: TextStyle(color: palette.ink, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      item.isPinned
+                          ? 'Убрать из закреплённых сверху'
+                          : 'Держать сверху в избранном',
+                      style: TextStyle(fontSize: 11, color: palette.muted),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final pin = !item.isPinned;
+                      await _clipboardManager.setItemPinned(item.id, pin);
+                      if (mounted) setState(() {});
+                      _showSnack(pin ? 'Закреплено' : 'Откреплено');
+                    },
+                  ),
+                if (item.isFavorite)
+                  ListTile(
+                    leading: Icon(
+                      Icons.local_offer_outlined,
+                      size: 20,
+                      color: palette.cyan,
+                    ),
+                    title: Text(
+                      item.hasTags ? 'Изменить теги' : 'Добавить теги',
+                      style: TextStyle(color: palette.ink, fontSize: 14),
+                    ),
+                    subtitle: item.hasTags
+                        ? Text(
+                            item.tags.map((t) => '#$t').join(' '),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: palette.muted,
+                            ),
+                          )
+                        : Text(
+                            'Метки для фильтра: #aws #work…',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: palette.muted,
+                            ),
+                          ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _editItemTags(item);
+                    },
+                  ),
+                if (item.isFavorite)
+                  ListTile(
+                    leading: Icon(
+                      Icons.folder_outlined,
+                      size: 20,
+                      color: palette.green,
+                    ),
+                    title: Text(
+                      item.hasFolder ? 'Изменить папку' : 'В папку…',
+                      style: TextStyle(color: palette.ink, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      item.hasFolder
+                          ? item.folder!
+                          : 'Одна коллекция на элемент',
+                      style: TextStyle(fontSize: 11, color: palette.muted),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _editItemFolder(item);
                     },
                   ),
                 ListTile(
@@ -1155,7 +1366,8 @@ class _MainWindowState extends State<MainWindow>
                     _showDeleteConfirmation(item);
                   },
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1177,6 +1389,46 @@ class _MainWindowState extends State<MainWindow>
     if (mounted) setState(() {});
     _showSnack(
       result.trim().isEmpty ? 'Комментарий удалён' : 'Комментарий сохранён',
+    );
+  }
+
+  Future<void> _editItemTags(ClipboardItem item) async {
+    final result = await showDialog<List<String>?>(
+      context: context,
+      builder: (context) => _TagsEditorDialog(
+        initialTags: item.tags,
+        suggestions: _clipboardManager.allFavoriteTags,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    await _clipboardManager.setItemTags(item.id, result);
+    if (mounted) setState(() {});
+    _showSnack(
+      result.isEmpty
+          ? 'Теги удалены'
+          : 'Теги: ${result.map((t) => '#$t').join(' ')}',
+    );
+  }
+
+  Future<void> _editItemFolder(ClipboardItem item) async {
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) => _FolderEditorDialog(
+        initialFolder: item.folder ?? '',
+        suggestions: _clipboardManager.allFavoriteFolders,
+        canClear: item.hasFolder,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    // Empty string means clear; dialog cancels with null.
+    await _clipboardManager.setItemFolder(item.id, result);
+    if (mounted) setState(() {});
+    _showSnack(
+      result.trim().isEmpty
+          ? 'Папка снята'
+          : 'Папка: ${result.trim()}',
     );
   }
 
@@ -1511,17 +1763,36 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.masked ? item.maskedPreview : item.preview,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            height: 1.4,
-                            color: palette.ink,
-                            fontFamily: 'Menlo',
-                            letterSpacing: widget.masked ? 1.2 : null,
-                          ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (item.isPinned) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(top: 1, right: 4),
+                                child: Icon(
+                                  Icons.push_pin,
+                                  size: 13,
+                                  color: palette.orange,
+                                ),
+                              ),
+                            ],
+                            Expanded(
+                              child: Text(
+                                widget.masked
+                                    ? item.maskedPreview
+                                    : item.preview,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  height: 1.4,
+                                  color: palette.ink,
+                                  fontFamily: 'Menlo',
+                                  letterSpacing: widget.masked ? 1.2 : null,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         if (item.hasComment) ...[
                           const SizedBox(height: 4),
@@ -1535,6 +1806,26 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                               color: palette.muted,
                               fontStyle: FontStyle.italic,
                             ),
+                          ),
+                        ],
+                        if (item.hasTags || item.hasFolder) ...[
+                          const SizedBox(height: 5),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: [
+                              if (item.hasFolder)
+                                _MetaChip(
+                                  icon: Icons.folder_outlined,
+                                  label: item.folder!,
+                                  color: palette.green,
+                                ),
+                              for (final tag in item.tags)
+                                _MetaChip(
+                                  label: '#$tag',
+                                  color: palette.cyan,
+                                ),
+                            ],
                           ),
                         ],
                         const SizedBox(height: 6),
@@ -1923,3 +2214,407 @@ class _CommentEditorDialogState extends State<_CommentEditorDialog> {
     );
   }
 }
+
+class _OrgFilterChip extends StatelessWidget {
+  const _OrgFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+    this.accentColor,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+  final Color? accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final color = accentColor ?? palette.accent;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected
+                ? color.withValues(alpha: 0.18)
+                : palette.bgElevated.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected ? color.withValues(alpha: 0.7) : palette.line,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 12, color: selected ? color : palette.muted),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'Menlo',
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? color : palette.mutedBright,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({
+    required this.label,
+    required this.color,
+    this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: color),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontFamily: 'Menlo',
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TagsEditorDialog extends StatefulWidget {
+  const _TagsEditorDialog({
+    required this.initialTags,
+    required this.suggestions,
+  });
+
+  final List<String> initialTags;
+  final List<String> suggestions;
+
+  @override
+  State<_TagsEditorDialog> createState() => _TagsEditorDialogState();
+}
+
+class _TagsEditorDialogState extends State<_TagsEditorDialog> {
+  late final TextEditingController _controller;
+  late List<String> _tags;
+
+  @override
+  void initState() {
+    super.initState();
+    _tags = List<String>.from(widget.initialTags);
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _commitInput() {
+    final parts = _controller.text.split(RegExp(r'[,;\s]+'));
+    final next = ClipboardItem.normalizeTags([..._tags, ...parts]);
+    setState(() {
+      _tags = next;
+      _controller.clear();
+    });
+  }
+
+  void _toggleSuggestion(String tag) {
+    final key = tag.toLowerCase();
+    setState(() {
+      if (_tags.any((t) => t.toLowerCase() == key)) {
+        _tags = _tags.where((t) => t.toLowerCase() != key).toList();
+      } else {
+        _tags = ClipboardItem.normalizeTags([..._tags, tag]);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final unusedSuggestions = widget.suggestions
+        .where(
+          (s) => !_tags.any((t) => t.toLowerCase() == s.toLowerCase()),
+        )
+        .toList();
+
+    return AlertDialog(
+      title: const Text('Теги'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Несколько меток через пробел или запятую',
+              style: TextStyle(fontSize: 12, color: palette.muted),
+            ),
+            const SizedBox(height: 10),
+            if (_tags.isNotEmpty) ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final tag in _tags)
+                    InputChip(
+                      label: Text('#$tag'),
+                      onDeleted: () => setState(() {
+                        _tags = _tags.where((t) => t != tag).toList();
+                      }),
+                      deleteIconColor: palette.muted,
+                      backgroundColor: palette.cyan.withValues(alpha: 0.14),
+                      side: BorderSide(color: palette.cyan.withValues(alpha: 0.4)),
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Menlo',
+                        color: palette.cyan,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              style: TextStyle(fontSize: 13, color: palette.ink),
+              onSubmitted: (_) => _commitInput(),
+              decoration: InputDecoration(
+                hintText: 'aws, deploy, secret…',
+                hintStyle: TextStyle(color: palette.muted, fontSize: 13),
+                filled: true,
+                fillColor: palette.bgElevated.withValues(alpha: 0.6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.accent),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.add, color: palette.accent),
+                  onPressed: _commitInput,
+                  tooltip: 'Добавить',
+                ),
+              ),
+            ),
+            if (unusedSuggestions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Существующие',
+                style: TextStyle(fontSize: 11, color: palette.muted),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final tag in unusedSuggestions)
+                    ActionChip(
+                      label: Text('#$tag'),
+                      onPressed: () => _toggleSuggestion(tag),
+                      backgroundColor:
+                          palette.bgElevated.withValues(alpha: 0.7),
+                      side: BorderSide(color: palette.line),
+                      labelStyle: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Menlo',
+                        color: palette.mutedBright,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (_tags.isNotEmpty || widget.initialTags.isNotEmpty)
+          TextButton(
+            onPressed: () => Navigator.pop(context, <String>[]),
+            child: Text('Очистить', style: TextStyle(color: palette.red)),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: TextStyle(color: palette.muted)),
+        ),
+        TextButton(
+          onPressed: () {
+            final parts = _controller.text.split(RegExp(r'[,;\s]+'));
+            final next = ClipboardItem.normalizeTags([..._tags, ...parts]);
+            Navigator.pop(context, next);
+          },
+          child: Text('Сохранить', style: TextStyle(color: palette.accent)),
+        ),
+      ],
+    );
+  }
+}
+
+class _FolderEditorDialog extends StatefulWidget {
+  const _FolderEditorDialog({
+    required this.initialFolder,
+    required this.suggestions,
+    required this.canClear,
+  });
+
+  final String initialFolder;
+  final List<String> suggestions;
+  final bool canClear;
+
+  @override
+  State<_FolderEditorDialog> createState() => _FolderEditorDialogState();
+}
+
+class _FolderEditorDialogState extends State<_FolderEditorDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialFolder);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return AlertDialog(
+      title: const Text('Папка'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Одна коллекция на элемент (Работа, Личное…)',
+              style: TextStyle(fontSize: 12, color: palette.muted),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              style: TextStyle(fontSize: 13, color: palette.ink),
+              onSubmitted: (value) => Navigator.pop(context, value),
+              decoration: InputDecoration(
+                hintText: 'Название папки',
+                hintStyle: TextStyle(color: palette.muted, fontSize: 13),
+                filled: true,
+                fillColor: palette.bgElevated.withValues(alpha: 0.6),
+                prefixIcon: Icon(
+                  Icons.folder_outlined,
+                  size: 18,
+                  color: palette.green,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.accent),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+            if (widget.suggestions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Существующие',
+                style: TextStyle(fontSize: 11, color: palette.muted),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final folder in widget.suggestions)
+                    ActionChip(
+                      avatar: Icon(
+                        Icons.folder_outlined,
+                        size: 14,
+                        color: palette.green,
+                      ),
+                      label: Text(folder),
+                      onPressed: () => Navigator.pop(context, folder),
+                      backgroundColor:
+                          palette.bgElevated.withValues(alpha: 0.7),
+                      side: BorderSide(color: palette.line),
+                      labelStyle: TextStyle(
+                        fontSize: 11,
+                        color: palette.mutedBright,
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.canClear)
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            child: Text('Убрать', style: TextStyle(color: palette.red)),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: TextStyle(color: palette.muted)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: Text('Сохранить', style: TextStyle(color: palette.accent)),
+        ),
+      ],
+    );
+  }
+}
+

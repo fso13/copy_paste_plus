@@ -13,6 +13,12 @@ class ClipboardItem {
   bool isFavorite;
   /// Freeform note for favorites (shown under content).
   String? comment;
+  /// Keep favorite near the top of the favorites list.
+  bool isPinned;
+  /// Soft labels for filtering (favorites).
+  List<String> tags;
+  /// Exclusive collection name for favorites (null = unfiled).
+  String? folder;
   final String? sourceBundleId;
   final String? sourceAppName;
   /// Hide content in UI when masking is enabled.
@@ -27,10 +33,14 @@ class ClipboardItem {
     required this.timestamp,
     this.isFavorite = false,
     this.comment,
+    this.isPinned = false,
+    List<String>? tags,
+    this.folder,
     this.sourceBundleId,
     this.sourceAppName,
     this.isSensitive = false,
-  }) : id = id ?? const Uuid().v4();
+  })  : id = id ?? const Uuid().v4(),
+        tags = normalizeTags(tags ?? const []);
 
   bool get hasRichText =>
       (html != null && html!.isNotEmpty) || (rtf != null && rtf!.isNotEmpty);
@@ -38,6 +48,10 @@ class ClipboardItem {
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
 
   bool get hasComment => comment != null && comment!.trim().isNotEmpty;
+
+  bool get hasTags => tags.isNotEmpty;
+
+  bool get hasFolder => folder != null && folder!.trim().isNotEmpty;
 
   String get preview {
     if (hasImage && (content.isEmpty || content == '[image]')) {
@@ -70,6 +84,9 @@ class ClipboardItem {
         'timestamp': timestamp.toIso8601String(),
         'isFavorite': isFavorite,
         if (hasComment) 'comment': comment,
+        if (isPinned) 'isPinned': true,
+        if (hasTags) 'tags': tags,
+        if (hasFolder) 'folder': folder,
         if (sourceBundleId != null && sourceBundleId!.isNotEmpty)
           'sourceBundleId': sourceBundleId,
         if (sourceAppName != null && sourceAppName!.isNotEmpty)
@@ -90,6 +107,9 @@ class ClipboardItem {
         ),
         isFavorite: json['isFavorite'] == true || json['isFavorite'] == 'true',
         comment: _optionalString(json['comment']),
+        isPinned: json['isPinned'] == true || json['isPinned'] == 'true',
+        tags: _parseTags(json['tags']),
+        folder: _optionalString(json['folder']),
         sourceBundleId: _optionalString(json['sourceBundleId']),
         sourceAppName: _optionalString(json['sourceAppName']),
         isSensitive:
@@ -103,6 +123,36 @@ class ClipboardItem {
         timestamp: DateTime.now(),
       );
     }
+  }
+
+  /// Trims, strips leading `#`, dedupes case-insensitively, keeps first casing.
+  static List<String> normalizeTags(Iterable<String> raw) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final entry in raw) {
+      var tag = entry.trim();
+      if (tag.startsWith('#')) tag = tag.substring(1).trim();
+      if (tag.isEmpty) continue;
+      final key = tag.toLowerCase();
+      if (seen.add(key)) result.add(tag);
+    }
+    return result;
+  }
+
+  static String? normalizeFolder(String? raw) {
+    final value = raw?.trim();
+    if (value == null || value.isEmpty) return null;
+    return value;
+  }
+
+  static List<String> _parseTags(dynamic value) {
+    if (value is List) {
+      return normalizeTags(value.map((e) => e.toString()));
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return normalizeTags(value.split(RegExp(r'[,;\s]+')));
+    }
+    return const [];
   }
 
   static String? _optionalString(dynamic value) {

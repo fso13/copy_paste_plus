@@ -2,7 +2,7 @@
 
 Сайт продукта: [fso13.github.io/copy_paste_plus](https://fso13.github.io/copy_paste_plus/)
 
-Актуальная версия приложения: **1.1.3** (см. [CHANGELOG.md](../CHANGELOG.md)).
+Актуальная версия приложения: **1.1.4** (см. [CHANGELOG.md](../CHANGELOG.md)).
 
 ### Codesign / notarize
 

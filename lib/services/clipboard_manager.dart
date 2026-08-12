@@ -182,6 +182,9 @@ class ClipboardManager {
           timestamp: first.timestamp,
           isFavorite: first.isFavorite,
           comment: first.comment,
+          isPinned: first.isPinned,
+          tags: List<String>.from(first.tags),
+          folder: first.folder,
           sourceBundleId: first.sourceBundleId ?? sourceBundleId,
           sourceAppName: first.sourceAppName ?? sourceAppName,
           isSensitive: first.isSensitive,
@@ -231,10 +234,18 @@ class ClipboardManager {
       return;
     }
 
+    _sortFavorites();
     _itemsController.add([..._items]);
     _favoritesController.add([..._favorites]);
 
     print('Streams refreshed with ${_items.length} items');
+  }
+
+  void _sortFavorites() {
+    _favorites.sort((a, b) {
+      if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+      return b.timestamp.compareTo(a.timestamp);
+    });
   }
 
   void _recreateControllers() {
@@ -244,6 +255,7 @@ class ClipboardManager {
     _itemsController = StreamController<List<ClipboardItem>>.broadcast();
     _favoritesController = StreamController<List<ClipboardItem>>.broadcast();
 
+    _sortFavorites();
     _itemsController.add([..._items]);
     _favoritesController.add([..._favorites]);
   }
@@ -306,6 +318,7 @@ class ClipboardManager {
       _maxItems = prefs.getInt('max_items') ?? AppConstants.defaultMaxItems;
       if (_maxItems < 10) _maxItems = 10;
       _items.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      _sortFavorites();
 
       print(
         'Data loaded: ${_items.length} items, ${_favorites.length} favorites',
@@ -414,17 +427,50 @@ class ClipboardManager {
   Future<void> toggleFavorite(String itemId) async {
     final itemIndex = _items.indexWhere((item) => item.id == itemId);
     if (itemIndex != -1) {
-      _items[itemIndex].isFavorite = !_items[itemIndex].isFavorite;
+      final item = _items[itemIndex];
+      item.isFavorite = !item.isFavorite;
 
-      if (_items[itemIndex].isFavorite) {
-        _favorites.add(_items[itemIndex]);
+      if (item.isFavorite) {
+        if (!_favorites.any((f) => f.id == itemId)) {
+          _favorites.add(item);
+        }
       } else {
-        _favorites.removeWhere((item) => item.id == itemId);
+        item.isPinned = false;
+        _favorites.removeWhere((f) => f.id == itemId);
       }
 
       await _saveData();
       refreshStreams();
+      return;
     }
+
+    // Favorite may outlive history after clear.
+    final favIndex = _favorites.indexWhere((item) => item.id == itemId);
+    if (favIndex != -1) {
+      _favorites.removeAt(favIndex);
+      await _saveData();
+      refreshStreams();
+    }
+  }
+
+  bool _updateItemEverywhere(
+    String itemId,
+    void Function(ClipboardItem item) update,
+  ) {
+    var updated = false;
+    for (final item in _items) {
+      if (item.id == itemId) {
+        update(item);
+        updated = true;
+      }
+    }
+    for (final item in _favorites) {
+      if (item.id == itemId) {
+        update(item);
+        updated = true;
+      }
+    }
+    return updated;
   }
 
   /// Sets a freeform comment on a favorite (empty clears it).
@@ -432,45 +478,108 @@ class ClipboardManager {
     final normalized = comment?.trim();
     final value = (normalized == null || normalized.isEmpty) ? null : comment;
 
-    var updated = false;
-    for (final item in _items) {
-      if (item.id == itemId) {
-        item.comment = value;
-        updated = true;
-      }
-    }
-    for (final item in _favorites) {
-      if (item.id == itemId) {
-        item.comment = value;
-        updated = true;
-      }
-    }
-
-    if (!updated) return;
+    if (!_updateItemEverywhere(itemId, (item) => item.comment = value)) return;
     await _saveData();
     refreshStreams();
   }
 
   /// Marks / unmarks an item as secret (masked in UI when masking is on).
   Future<void> setItemSensitive(String itemId, bool sensitive) async {
-    var updated = false;
-    for (final item in _items) {
-      if (item.id == itemId) {
-        item.isSensitive = sensitive;
-        updated = true;
-      }
+    if (!_updateItemEverywhere(
+      itemId,
+      (item) => item.isSensitive = sensitive,
+    )) {
+      return;
     }
-    for (final item in _favorites) {
-      if (item.id == itemId) {
-        item.isSensitive = sensitive;
-        updated = true;
-      }
-    }
-
-    if (!updated) return;
     await _saveData();
     refreshStreams();
   }
+
+  ClipboardItem? _findItem(String itemId) {
+    for (final item in _favorites) {
+      if (item.id == itemId) return item;
+    }
+    for (final item in _items) {
+      if (item.id == itemId) return item;
+    }
+    return null;
+  }
+
+  /// Pins / unpins a favorite (pinned stay at the top).
+  Future<void> setItemPinned(String itemId, bool pinned) async {
+    final target = _findItem(itemId);
+    if (target == null) return;
+
+    if (!_updateItemEverywhere(itemId, (item) {
+      item.isPinned = pinned;
+      if (pinned) item.isFavorite = true;
+    })) {
+      return;
+    }
+
+    if (pinned && !_favorites.any((item) => item.id == itemId)) {
+      _favorites.add(target);
+    }
+
+    await _saveData();
+    refreshStreams();
+  }
+
+  Future<void> togglePin(String itemId) async {
+    final target = _findItem(itemId);
+    if (target == null) return;
+    await setItemPinned(itemId, !target.isPinned);
+  }
+
+  /// Replaces tags on an item (normalized, deduped).
+  Future<void> setItemTags(String itemId, List<String> tags) async {
+    final normalized = ClipboardItem.normalizeTags(tags);
+    if (!_updateItemEverywhere(itemId, (item) => item.tags = normalized)) {
+      return;
+    }
+    await _saveData();
+    refreshStreams();
+  }
+
+  /// Sets exclusive folder for a favorite (`null` / empty clears).
+  Future<void> setItemFolder(String itemId, String? folder) async {
+    final normalized = ClipboardItem.normalizeFolder(folder);
+    if (!_updateItemEverywhere(itemId, (item) => item.folder = normalized)) {
+      return;
+    }
+    await _saveData();
+    refreshStreams();
+  }
+
+  /// Unique tags across favorites, sorted case-insensitively.
+  List<String> get allFavoriteTags {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final item in _favorites) {
+      for (final tag in item.tags) {
+        final key = tag.toLowerCase();
+        if (seen.add(key)) result.add(tag);
+      }
+    }
+    result.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return result;
+  }
+
+  /// Unique folder names across favorites, sorted case-insensitively.
+  List<String> get allFavoriteFolders {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final item in _favorites) {
+      if (!item.hasFolder) continue;
+      final name = item.folder!;
+      final key = name.toLowerCase();
+      if (seen.add(key)) result.add(name);
+    }
+    result.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return result;
+  }
+
+  bool get hasPinnedFavorites => _favorites.any((item) => item.isPinned);
 
   void setMaxItems(int maxItems) {
     _maxItems = maxItems;
@@ -520,6 +629,7 @@ class ClipboardManager {
   Future<void> clearFavorites() async {
     for (final item in _items) {
       item.isFavorite = false;
+      item.isPinned = false;
     }
     _favorites.clear();
     await _saveData();

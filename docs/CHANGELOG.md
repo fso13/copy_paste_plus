@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [1.1.4] — 2026-08-12
+
+### Добавлено
+- Организация избранного поверх ★: pin (закрепить сверху), папки и теги
+- Фильтр-чипы на вкладке «Избранное»: Все / Pin / папки / `#теги`
+- Поиск по тегам и папкам
+
+### Изменено
+- Актуализированы скриншоты и документация (pin / папки / теги)
+
 ## [1.1.3] — 2026-08-12
 
 ### Добавлено
@@ -155,7 +165,8 @@
 - Настройки: хоткей, лимит истории, запуск при старте системы
 - Нативный мониторинг буфера обмена на macOS
 
-[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/fso13/copy_paste_plus/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.1.4
 [1.1.0]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.1.0
 [1.0.8]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.8
 [1.0.7]: https://github.com/fso13/copy_paste_plus/releases/tag/v1.0.7

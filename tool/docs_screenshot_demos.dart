@@ -121,53 +121,37 @@ class DemoClipboardList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final items = tab == 0
-        ? const [
-            (
-              'git commit -m "hire me"',
-              '2 мин назад',
-              ContentTypeKind.shell,
-              true,
-            ),
-            (
-              '••••••••••••••••',
-              '5 мин назад',
-              ContentTypeKind.secret,
-              false,
-            ),
-            (
-              'https://github.com/fso13/copy_paste_plus',
-              '10 мин назад',
-              ContentTypeKind.url,
-              false,
-            ),
-            (
-              '{"ok":true}',
-              'вчера',
-              ContentTypeKind.json,
-              true,
-            ),
-          ]
-        : const [
-            (
-              'git commit -m "hire me"',
-              '2 мин назад',
-              ContentTypeKind.shell,
-              true,
-            ),
-            (
-              'API_TOKEN',
-              'коммент: staging',
-              ContentTypeKind.secret,
-              true,
-            ),
-            (
-              '⌘⇧C forever',
-              'вчера',
-              ContentTypeKind.text,
-              true,
-            ),
-          ];
+
+    if (tab == 1) {
+      return const DemoFavoritesList();
+    }
+
+    final items = const [
+      (
+        'git commit -m "hire me"',
+        '2 мин назад',
+        ContentTypeKind.shell,
+        true,
+      ),
+      (
+        '••••••••••••••••',
+        '5 мин назад',
+        ContentTypeKind.secret,
+        false,
+      ),
+      (
+        'https://github.com/fso13/copy_paste_plus',
+        '10 мин назад',
+        ContentTypeKind.url,
+        false,
+      ),
+      (
+        '{"ok":true}',
+        'вчера',
+        ContentTypeKind.json,
+        true,
+      ),
+    ];
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
@@ -256,6 +240,317 @@ class DemoClipboardList extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class DemoFavoritesList extends StatelessWidget {
+  const DemoFavoritesList();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final items = <({
+      String text,
+      String? comment,
+      ContentTypeKind kind,
+      bool pinned,
+      String? folder,
+      List<String> tags,
+    })>[
+      (
+        text: 'git commit -m "hire me"',
+        comment: null,
+        kind: ContentTypeKind.shell,
+        pinned: true,
+        folder: 'Работа',
+        tags: const ['git'],
+      ),
+      (
+        text: 'API_TOKEN',
+        comment: 'staging',
+        kind: ContentTypeKind.secret,
+        pinned: true,
+        folder: 'Работа',
+        tags: const ['aws', 'secret'],
+      ),
+      (
+        text: '⌘⇧C forever',
+        comment: null,
+        kind: ContentTypeKind.text,
+        pinned: false,
+        folder: 'Личное',
+        tags: const [],
+      ),
+    ];
+
+    Widget chip({
+      required String label,
+      required bool selected,
+      IconData? icon,
+      Color? accent,
+    }) {
+      final color = accent ?? palette.accent;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.18)
+              : palette.bgElevated.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? color.withValues(alpha: 0.7) : palette.line,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: selected ? color : palette.muted),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontFamily: 'Menlo',
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? color : palette.mutedBright,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget metaChip({
+      required String label,
+      required Color color,
+      IconData? icon,
+    }) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 11, color: color),
+              const SizedBox(width: 3),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontFamily: 'Menlo',
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+          child: SizedBox(
+            height: 30,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                chip(label: 'Все', selected: true),
+                const SizedBox(width: 6),
+                chip(label: '📌 Pin', selected: false),
+                const SizedBox(width: 6),
+                chip(
+                  label: 'Работа',
+                  selected: false,
+                  icon: Icons.folder_outlined,
+                ),
+                const SizedBox(width: 6),
+                chip(
+                  label: 'Личное',
+                  selected: false,
+                  icon: Icons.folder_outlined,
+                ),
+                const SizedBox(width: 6),
+                chip(
+                  label: '#aws',
+                  selected: false,
+                  accent: palette.cyan,
+                ),
+                const SizedBox(width: 6),
+                chip(
+                  label: '#git',
+                  selected: false,
+                  accent: palette.cyan,
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 6),
+            itemBuilder: (context, i) {
+              final item = items[i];
+              final typeColor = ContentTypeColorDefaults.colors[item.kind]!;
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: palette.bgElevated.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: typeColor.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 42,
+                      margin: const EdgeInsets.only(right: 10, top: 2),
+                      decoration: BoxDecoration(
+                        color: typeColor,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (item.pinned) ...[
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(top: 1, right: 4),
+                                  child: Icon(
+                                    Icons.push_pin,
+                                    size: 13,
+                                    color: palette.orange,
+                                  ),
+                                ),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  item.kind == ContentTypeKind.secret
+                                      ? '••••••••••••'
+                                      : item.text,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: palette.ink,
+                                    fontFamily: 'Menlo',
+                                    letterSpacing:
+                                        item.kind == ContentTypeKind.secret
+                                            ? 1.2
+                                            : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (item.comment != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              item.comment!,
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                color: palette.muted,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ],
+                          if (item.folder != null || item.tags.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 4,
+                              children: [
+                                if (item.folder != null)
+                                  metaChip(
+                                    label: item.folder!,
+                                    color: palette.green,
+                                    icon: Icons.folder_outlined,
+                                  ),
+                                for (final tag in item.tags)
+                                  metaChip(
+                                    label: '#$tag',
+                                    color: palette.cyan,
+                                  ),
+                              ],
+                            ),
+                          ],
+                          const SizedBox(height: 5),
+                          Row(
+                            children: [
+                              Text(
+                                i == 0
+                                    ? '2 мин назад'
+                                    : (i == 1 ? '5 мин назад' : 'вчера'),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: palette.muted,
+                                ),
+                              ),
+                              Text(
+                                '  ·  ',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: palette.muted,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: typeColor.withValues(alpha: 0.16),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  item.kind.badge,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontFamily: 'Menlo',
+                                    color: typeColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (item.kind == ContentTypeKind.secret)
+                      Icon(
+                        Icons.visibility_outlined,
+                        size: 15,
+                        color: palette.muted,
+                      )
+                    else
+                      Icon(Icons.star, size: 16, color: palette.yellow),
+                    const SizedBox(width: 4),
+                    Icon(Icons.more_vert, size: 16, color: palette.muted),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -522,9 +817,9 @@ class DemoSettingsWindow extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  DemoInfo(label: 'Версия', value: '1.1.2'),
+                  DemoInfo(label: 'Версия', value: '1.1.4'),
                   const SizedBox(height: 8),
-                  DemoInfo(label: 'Номер сборки', value: '12'),
+                  DemoInfo(label: 'Номер сборки', value: '14'),
                 ],
               ),
             ),
@@ -543,7 +838,7 @@ class DemoHelpWindow extends StatelessWidget {
     final palette = context.palette;
     const topics = [
       ('Сниппеты (шаблоны)', true),
-      ('Цвета типов', false),
+      ('Избранное: pin, папки, теги', false),
       ('Secret и маскировка', false),
       ('Шифрование истории', false),
       ('Авто-вставка', false),
