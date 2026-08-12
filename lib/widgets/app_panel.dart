@@ -103,67 +103,69 @@ class SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.palette;
 
-    final card = Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.bgElevated.withValues(alpha: 0.78),
+    final card = Material(
+      color: palette.bgElevated.withValues(alpha: 0.78),
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: palette.accent.withValues(alpha: 0.22)),
+        side: BorderSide(color: palette.accent.withValues(alpha: 0.22)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (icon != null) ...[
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: palette.accent.withValues(alpha: 0.18),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, size: 17, color: palette.accent),
-                ),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: palette.ink,
-                      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (icon != null) ...[
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: palette.accent.withValues(alpha: 0.18),
+                      shape: BoxShape.circle,
                     ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 4),
+                    child: Icon(icon, size: 17, color: palette.accent),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        subtitle!,
+                        title,
                         style: TextStyle(
-                          fontSize: 12,
-                          color: palette.muted,
-                          height: 1.4,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: palette.ink,
                         ),
                       ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: palette.muted,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            child,
+            if (footer != null) ...[
+              const SizedBox(height: 12),
+              footer!,
             ],
-          ),
-          const SizedBox(height: 14),
-          child,
-          if (footer != null) ...[
-            const SizedBox(height: 12),
-            footer!,
           ],
-        ],
+        ),
       ),
     );
 
@@ -173,7 +175,7 @@ class SettingsCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: card,
       ),
     );

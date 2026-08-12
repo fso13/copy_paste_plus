@@ -1,10 +1,13 @@
+import 'package:copy_paste_plus/data/help_guide.dart';
 import 'package:copy_paste_plus/global.dart';
+import 'package:copy_paste_plus/models/content_type_colors.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/hotkey_service.dart';
 import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:copy_paste_plus/services/theme_service.dart';
 import 'package:copy_paste_plus/services/update_service.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
+import 'package:copy_paste_plus/utils/constants.dart';
 import 'package:copy_paste_plus/views/pong_game.dart';
 import 'package:copy_paste_plus/widgets/app_panel.dart';
 import 'package:copy_paste_plus/widgets/brand_mark.dart';
@@ -14,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io';
 
@@ -37,6 +41,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
   bool _launchAtLoginSupported = true;
   bool _autoPasteEnabled = false;
   bool _maskSensitiveEnabled = true;
+  bool _encryptionEnabled = false;
   bool _isRecording = false;
   bool _checkingUpdates = false;
   String _currentHotkeyDescription = '';
@@ -44,6 +49,8 @@ class _SettingsWindowState extends State<SettingsWindow> {
   String _buildNumber = '';
   int _aboutClicks = 0;
   bool _party = false;
+  bool _showHelp = false;
+  String? _expandedHelpId;
   List<String> _ignoredBundleIds = [];
   Map<String, String> _ignoredAppNames = {};
 
@@ -87,6 +94,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
     _launchAtStartup = launch.enabled ?? await appSettings.getAutoStartEnabled();
     _autoPasteEnabled = appSettings.autoPasteEnabled;
     _maskSensitiveEnabled = appSettings.maskSensitiveEnabled;
+    _encryptionEnabled = appSettings.encryptionEnabled;
     _ignoredBundleIds = appSettings.ignoredBundleIds.toList()..sort();
     setState(() {});
   }
@@ -137,6 +145,17 @@ class _SettingsWindowState extends State<SettingsWindow> {
   Future<void> _setMaskSensitiveEnabled(bool enabled) async {
     await appSettings.setMaskSensitiveEnabled(enabled);
     setState(() => _maskSensitiveEnabled = enabled);
+  }
+
+  Future<void> _setEncryptionEnabled(bool enabled) async {
+    await appSettings.setEncryptionEnabled(enabled);
+    await _clipboardManager.repersistWithCurrentEncryption();
+    setState(() => _encryptionEnabled = enabled);
+    _showSnack(
+      enabled
+          ? 'История будет храниться в зашифрованном виде'
+          : 'Шифрование истории отключено',
+    );
   }
 
   Future<void> _removeIgnoredApp(String bundleId) async {
@@ -494,6 +513,151 @@ class _SettingsWindowState extends State<SettingsWindow> {
     exit(0);
   }
 
+  Future<void> _openDocsSite() async {
+    final uri = Uri.parse(AppConstants.docsSiteUrl);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      _showSnack('Не удалось открыть сайт документации');
+    }
+  }
+
+  Future<void> _pickTypeColor(ContentTypeKind kind) async {
+    final palette = context.palette;
+    final current = appSettings.colorFor(kind);
+    final picked = await showDialog<Color>(
+      context: context,
+      builder: (context) => _TypeColorPickerDialog(
+        title: kind.label,
+        initial: current,
+        palette: palette,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await appSettings.setTypeColor(kind, picked);
+    setState(() {});
+  }
+
+  Future<void> _resetTypeColors() async {
+    await appSettings.resetTypeColors();
+    if (mounted) setState(() {});
+    _showSnack('Цвета типов сброшены');
+  }
+
+  IconData _helpIcon(String key) {
+    switch (key) {
+      case 'bolt':
+        return Icons.bolt_outlined;
+      case 'keyboard':
+        return Icons.keyboard_outlined;
+      case 'code':
+        return Icons.code;
+      case 'visibility_off':
+        return Icons.visibility_off_outlined;
+      case 'lock':
+        return Icons.lock_outline;
+      case 'keyboard_return':
+        return Icons.keyboard_return;
+      case 'auto_fix':
+        return Icons.text_fields;
+      case 'star':
+        return Icons.star_outline;
+      case 'block':
+        return Icons.block;
+      case 'image':
+        return Icons.image_outlined;
+      case 'palette':
+        return Icons.palette_outlined;
+      default:
+        return Icons.help_outline;
+    }
+  }
+
+  Widget _buildHelpBody(AppPalette palette) {
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            'Кратко, как пользоваться CopyPastePlus: сниппеты, быстрый выбор, '
+            'secret, шифрование и остальное.',
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.45,
+              color: palette.muted,
+            ),
+          ),
+        ),
+        for (final topic in HelpGuide.topics) ...[
+          Material(
+            color: palette.bgElevated.withValues(alpha: 0.78),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: palette.accent.withValues(alpha: 0.18)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: PageStorageKey('help_${topic.id}'),
+                initiallyExpanded: _expandedHelpId == topic.id,
+                onExpansionChanged: (open) {
+                  setState(() {
+                    _expandedHelpId = open ? topic.id : null;
+                  });
+                },
+                leading: Icon(
+                  _helpIcon(topic.icon),
+                  size: 20,
+                  color: palette.accent,
+                ),
+                title: Text(
+                  topic.title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: palette.ink,
+                  ),
+                ),
+                childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                children: [
+                  for (var i = 0; i < topic.paragraphs.length; i++) ...[
+                    if (i > 0) const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        topic.paragraphs[i],
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.45,
+                          color: palette.ink.withValues(alpha: 0.92),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        OutlinedButton.icon(
+          onPressed: _openDocsSite,
+          icon: Icon(Icons.open_in_new, size: 16, color: palette.accent),
+          label: Text(
+            'Сайт с документацией',
+            style: TextStyle(fontSize: 13, color: palette.accent),
+          ),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: palette.accent.withValues(alpha: 0.4)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -507,8 +671,20 @@ class _SettingsWindowState extends State<SettingsWindow> {
         body: Stack(
           children: [
             AppPanel(
-              title: 'settings.cfg',
+              title: _showHelp ? 'help.md' : 'settings.cfg',
               actions: [
+                if (_showHelp)
+                  IconButton(
+                    icon: Icon(Icons.arrow_back, size: 16, color: palette.muted),
+                    onPressed: () => setState(() {
+                      _showHelp = false;
+                      _expandedHelpId = null;
+                    }),
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 28, minHeight: 28),
+                    tooltip: 'К настройкам',
+                  ),
                 IconButton(
                   icon: Icon(Icons.close, size: 16, color: palette.muted),
                   onPressed: widget.onClose,
@@ -517,7 +693,9 @@ class _SettingsWindowState extends State<SettingsWindow> {
                       const BoxConstraints(minWidth: 28, minHeight: 28),
                 ),
               ],
-              child: ListView(
+              child: _showHelp
+                  ? _buildHelpBody(palette)
+                  : ListView(
                 padding: const EdgeInsets.all(14),
                 children: [
                   Padding(
@@ -826,7 +1004,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   const SizedBox(height: 14),
                   SettingsCard(
                     title: 'Приватность',
-                    subtitle: 'Игнор приложений и маскировка',
+                    subtitle: 'Игнор приложений, маскировка и шифрование',
                     icon: Icons.shield_outlined,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -843,6 +1021,19 @@ class _SettingsWindowState extends State<SettingsWindow> {
                           ),
                           value: _maskSensitiveEnabled,
                           onChanged: _setMaskSensitiveEnabled,
+                        ),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(
+                            'Шифровать историю на диске',
+                            style: TextStyle(fontSize: 13, color: palette.ink),
+                          ),
+                          subtitle: Text(
+                            'AES-GCM, ключ в Keychain',
+                            style: TextStyle(fontSize: 11, color: palette.muted),
+                          ),
+                          value: _encryptionEnabled,
+                          onChanged: _setEncryptionEnabled,
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -910,6 +1101,137 @@ class _SettingsWindowState extends State<SettingsWindow> {
                               ),
                             ),
                           ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SettingsCard(
+                    title: 'Цвета типов',
+                    subtitle:
+                        'Полоска и бейдж в списке: text, url, json, secret…',
+                    icon: Icons.palette_outlined,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final kind in ContentTypeKind.values) ...[
+                          if (kind != ContentTypeKind.values.first)
+                            const SizedBox(height: 6),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () => _pickTypeColor(kind),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                  horizontal: 2,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 22,
+                                      height: 22,
+                                      decoration: BoxDecoration(
+                                        color: appSettings.colorFor(kind),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: palette.line,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            kind.label,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: palette.ink,
+                                            ),
+                                          ),
+                                          Text(
+                                            kind.badge,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontFamily: 'Menlo',
+                                              color: palette.muted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(
+                                      Icons.chevron_right,
+                                      size: 18,
+                                      color: palette.muted,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: _resetTypeColors,
+                            child: Text(
+                              'Сбросить цвета',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: palette.muted,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SettingsCard(
+                    title: 'Справка',
+                    subtitle:
+                        'Сниппеты, быстрый выбор, secret, шифрование и другое',
+                    icon: Icons.menu_book_outlined,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Как пользоваться шаблонами {{name}}, цифрами 1–9, '
+                          'авто-вставкой и приватностью — в краткой справке.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: palette.muted,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: () => setState(() {
+                            _showHelp = true;
+                            _expandedHelpId = 'snippets';
+                          }),
+                          icon: const Icon(Icons.menu_book_outlined, size: 16),
+                          label: const Text(
+                            'Открыть справку',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _openDocsSite,
+                          icon: Icon(Icons.open_in_new,
+                              size: 16, color: palette.ink),
+                          label: Text(
+                            'Открыть сайт',
+                            style:
+                                TextStyle(fontSize: 13, color: palette.ink),
+                          ),
                         ),
                       ],
                     ),
@@ -1103,6 +1425,161 @@ class _InfoRow extends StatelessWidget {
             fontFamily: 'Menlo',
             color: palette.accent,
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TypeColorPickerDialog extends StatefulWidget {
+  const _TypeColorPickerDialog({
+    required this.title,
+    required this.initial,
+    required this.palette,
+  });
+
+  final String title;
+  final Color initial;
+  final AppPalette palette;
+
+  @override
+  State<_TypeColorPickerDialog> createState() => _TypeColorPickerDialogState();
+}
+
+class _TypeColorPickerDialogState extends State<_TypeColorPickerDialog> {
+  late Color _selected;
+  late final TextEditingController _hexController;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.initial;
+    _hexController = TextEditingController(text: _toHex(_selected));
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  static String _toHex(Color c) {
+    final r = (c.r * 255.0).round().clamp(0, 255);
+    final g = (c.g * 255.0).round().clamp(0, 255);
+    final b = (c.b * 255.0).round().clamp(0, 255);
+    return '#${r.toRadixString(16).padLeft(2, '0')}'
+            '${g.toRadixString(16).padLeft(2, '0')}'
+            '${b.toRadixString(16).padLeft(2, '0')}'
+        .toUpperCase();
+  }
+
+  Color? _fromHex(String raw) {
+    var s = raw.trim();
+    if (s.startsWith('#')) s = s.substring(1);
+    if (s.length == 6) s = 'FF$s';
+    if (s.length != 8) return null;
+    final value = int.tryParse(s, radix: 16);
+    if (value == null) return null;
+    return Color(value);
+  }
+
+  void _select(Color color) {
+    setState(() {
+      _selected = color;
+      _hexController.text = _toHex(color);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = widget.palette;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _selected,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: palette.line),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _hexController,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Menlo',
+                      color: palette.ink,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'HEX',
+                      labelStyle:
+                          TextStyle(color: palette.muted, fontSize: 12),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onSubmitted: (value) {
+                      final parsed = _fromHex(value);
+                      if (parsed != null) _select(parsed);
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final swatch in ContentTypeColorDefaults.swatches)
+                  InkWell(
+                    onTap: () => _select(swatch),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: swatch,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _selected.toARGB32() == swatch.toARGB32()
+                              ? palette.ink
+                              : palette.line,
+                          width: _selected.toARGB32() == swatch.toARGB32()
+                              ? 2
+                              : 1,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: TextStyle(color: palette.muted)),
+        ),
+        TextButton(
+          onPressed: () {
+            final parsed = _fromHex(_hexController.text);
+            Navigator.pop(context, parsed ?? _selected);
+          },
+          child: Text('Сохранить', style: TextStyle(color: palette.accent)),
         ),
       ],
     );

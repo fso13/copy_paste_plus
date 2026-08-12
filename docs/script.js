@@ -1,4 +1,5 @@
-document.getElementById("year").textContent = String(new Date().getFullYear());
+document.getElementById("year") &&
+  (document.getElementById("year").textContent = String(new Date().getFullYear()));
 
 const themeToggle = document.getElementById("theme-toggle");
 const themeColorMeta = document.getElementById("theme-color-meta");
@@ -68,6 +69,8 @@ const statuses = [
   "html + rtf captured ✓",
   "favorite starred ★",
   "hotkey: ⌘⇧C armed",
+  "auto-paste armed",
+  "secret masked ••••",
   "changeCount++",
   "plain-text fallback ready",
   "sudo pbcopy coffee",
@@ -228,6 +231,8 @@ function renderChangelog(releases) {
   const root = document.getElementById("changelog-root");
   if (!root) return;
 
+  root.classList.add("is-visible");
+
   if (!releases.length) {
     root.innerHTML = '<p class="changelog-status">Пока нет записей.</p>';
     return;
@@ -253,6 +258,12 @@ async function loadChangelog() {
   const root = document.getElementById("changelog-root");
   if (!root) return;
 
+  // Prefer embedded markdown (always available on Pages / file://).
+  if (typeof window.__CHANGELOG_MARKDOWN__ === "string" && window.__CHANGELOG_MARKDOWN__.trim()) {
+    renderChangelog(parseChangelog(window.__CHANGELOG_MARKDOWN__));
+    return;
+  }
+
   for (const url of CHANGELOG_SOURCES) {
     try {
       const response = await fetch(url, { cache: "no-cache" });
@@ -265,6 +276,7 @@ async function loadChangelog() {
     }
   }
 
+  root.classList.add("is-visible");
   root.innerHTML =
     '<p class="changelog-status">Не удалось загрузить changelog. См. <a href="https://github.com/fso13/copy_paste_plus/blob/main/CHANGELOG.md">CHANGELOG.md</a>.</p>';
 }

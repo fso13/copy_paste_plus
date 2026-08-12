@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 export PATH="${FLUTTER_PATH:-$HOME/Documents/Личное/flutter/bin}:/opt/homebrew/bin:$PATH"
 
 APP_NAME="CopyPastePlus"
-BUNDLE_NAME="copy_paste_plus.app"
+BUNDLE_NAME="CopyPastePlus.app"
 VERSION="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)"
 BUILD_NUMBER="$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f2)"
 DMG_NAME="${APP_NAME}-${VERSION}.${BUILD_NUMBER}.dmg"
@@ -43,6 +43,13 @@ fi
 echo "→ Preparing DMG staging..."
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
+
+if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+  chmod +x scripts/codesign_and_notarize.sh
+  echo "→ Codesigning Release .app..."
+  ./scripts/codesign_and_notarize.sh "$APP_PATH"
+fi
+
 cp -R "$APP_PATH" "$STAGING_DIR/${APP_NAME}.app"
 ln -sf /Applications "$STAGING_DIR/Applications"
 
@@ -76,6 +83,11 @@ rm -rf "$STAGING_DIR"
 
 echo "✓ DMG ready: ${DIST_DIR}/${DMG_NAME}"
 ls -lh "${DIST_DIR}/${DMG_NAME}"
+
+if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+  chmod +x scripts/codesign_and_notarize.sh
+  ./scripts/codesign_and_notarize.sh "${DIST_DIR}/${DMG_NAME}" || true
+fi
 
 # Emit path for CI consumers
 echo "DMG_PATH=${DIST_DIR}/${DMG_NAME}"

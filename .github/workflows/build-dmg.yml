@@ -30,8 +30,15 @@ jobs:
 
       - name: Build macOS + DMG
         id: dmg
+        env:
+          # Optional: set repository secrets to enable Developer ID signing.
+          CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          NOTARIZE: ${{ secrets.NOTARIZE }}
         run: |
-          chmod +x scripts/create_dmg.sh
+          chmod +x scripts/create_dmg.sh scripts/codesign_and_notarize.sh
           ./scripts/create_dmg.sh --build --ci
           DMG_FILE="$(ls dist/*.dmg | head -n 1)"
           echo "dmg_file=$DMG_FILE" >> "$GITHUB_OUTPUT"

@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'package:copy_paste_plus/global.dart';
 import 'package:copy_paste_plus/models/clipboard_item.dart';
+import 'package:copy_paste_plus/models/content_type_colors.dart';
 import 'package:copy_paste_plus/services/app_settings.dart';
 import 'package:copy_paste_plus/services/clipboard_manager.dart';
 import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
+import 'package:copy_paste_plus/services/snippet_service.dart';
+import 'package:copy_paste_plus/services/text_transforms.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
 import 'package:copy_paste_plus/widgets/app_panel.dart';
 import 'package:copy_paste_plus/widgets/brand_mark.dart';
@@ -34,6 +38,7 @@ class _MainWindowState extends State<MainWindow>
   final FocusNode _listFocusNode = FocusNode();
   final ScrollController _historyScrollController = ScrollController();
   final ScrollController _favoritesScrollController = ScrollController();
+  final ScrollController _snippetsScrollController = ScrollController();
 
   StreamSubscription<List<ClipboardItem>>? _subscription;
 
@@ -44,6 +49,8 @@ class _MainWindowState extends State<MainWindow>
   late final String _emptyFavoritesJoke;
   final Set<String> _revealedSensitiveIds = {};
 
+  bool get _isSnippetsTab => _currentTabIndex == 2;
+
   @override
   void initState() {
     super.initState();
@@ -52,14 +59,21 @@ class _MainWindowState extends State<MainWindow>
         emptyHistoryJokes[rng.nextInt(emptyHistoryJokes.length)];
     _emptyFavoritesJoke =
         emptyFavoritesJokes[rng.nextInt(emptyFavoritesJokes.length)];
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_handleTabChange);
     _searchFocusNode.addListener(() {
       if (mounted) setState(() {});
     });
     _subscribeToStream();
+    AppSettings.instance.addListener(_onSettingsChanged);
+    SnippetService.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
+  void _onSettingsChanged() {
+    if (mounted) setState(() {});
+  }
   void _handleTabChange() {
     setState(() {
       _currentTabIndex = _tabController.index;
@@ -89,10 +103,26 @@ class _MainWindowState extends State<MainWindow>
   }
 
   List<ClipboardItem> get _visibleItems {
-    final isHistoryTab = _currentTabIndex == 0;
-    return _filtered(
-      isHistoryTab ? _clipboardManager.items : _clipboardManager.favorites,
-    );
+    if (_currentTabIndex == 0) {
+      return _filtered(_clipboardManager.items);
+    }
+    if (_currentTabIndex == 1) {
+      return _filtered(_clipboardManager.favorites);
+    }
+    return const [];
+  }
+
+  List<Snippet> get _visibleSnippets {
+    final searchQuery = _searchController.text.toLowerCase();
+    final all = SnippetService.instance.snippets;
+    if (searchQuery.isEmpty) return all;
+    return all
+        .where(
+          (s) =>
+              s.title.toLowerCase().contains(searchQuery) ||
+              s.body.toLowerCase().contains(searchQuery),
+        )
+        .toList();
   }
 
   void _clearSearch() {
@@ -116,8 +146,16 @@ class _MainWindowState extends State<MainWindow>
     _ensureSelectedVisible();
   }
 
-  ScrollController get _activeScrollController =>
-      _currentTabIndex == 0 ? _historyScrollController : _favoritesScrollController;
+  ScrollController get _activeScrollController {
+    switch (_currentTabIndex) {
+      case 0:
+        return _historyScrollController;
+      case 1:
+        return _favoritesScrollController;
+      default:
+        return _snippetsScrollController;
+    }
+  }
 
   void _ensureSelectedVisible() {
     final scrollController = _activeScrollController;
@@ -144,7 +182,15 @@ class _MainWindowState extends State<MainWindow>
     }
   }
 
-  Future<void> _activateSelected(List<ClipboardItem> items) async {
+  Future<void> _activateSelected() async {
+    if (_isSnippetsTab) {
+      final snippets = _visibleSnippets;
+      if (snippets.isEmpty) return;
+      final index = _selectedIndex.clamp(0, snippets.length - 1);
+      await _handleSnippetTap(snippets[index]);
+      return;
+    }
+    final items = _visibleItems;
     if (items.isEmpty) return;
     final index = _selectedIndex.clamp(0, items.length - 1);
     await _handleItemTap(items[index]);
@@ -157,7 +203,8 @@ class _MainWindowState extends State<MainWindow>
       return KeyEventResult.ignored;
     }
 
-    final items = _visibleItems;
+    final itemCount =
+        _isSnippetsTab ? _visibleSnippets.length : _visibleItems.length;
     final key = event.logicalKey;
 
     if (key == LogicalKeyboardKey.escape) {
@@ -175,16 +222,16 @@ class _MainWindowState extends State<MainWindow>
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
-      _moveSelection(1, items.length);
+      _moveSelection(1, itemCount);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      _moveSelection(-1, items.length);
+      _moveSelection(-1, itemCount);
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter) {
-      _activateSelected(items);
+      _activateSelected();
       return KeyEventResult.handled;
     }
 
@@ -210,8 +257,12 @@ class _MainWindowState extends State<MainWindow>
     };
 
     final quickIndex = digitMap[key];
-    if (quickIndex != null && quickIndex < items.length) {
-      _handleItemTap(items[quickIndex]);
+    if (quickIndex != null && quickIndex < itemCount) {
+      if (_isSnippetsTab) {
+        _handleSnippetTap(_visibleSnippets[quickIndex]);
+      } else {
+        _handleItemTap(_visibleItems[quickIndex]);
+      }
       return KeyEventResult.handled;
     }
 
@@ -276,12 +327,14 @@ class _MainWindowState extends State<MainWindow>
 
   @override
   void dispose() {
+    AppSettings.instance.removeListener(_onSettingsChanged);
     _tabController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     _listFocusNode.dispose();
     _historyScrollController.dispose();
     _favoritesScrollController.dispose();
+    _snippetsScrollController.dispose();
     _subscription?.cancel();
     super.dispose();
   }
@@ -291,10 +344,15 @@ class _MainWindowState extends State<MainWindow>
     final palette = context.palette;
     final historyItems = _filtered(_clipboardManager.items);
     final favoriteItems = _filtered(_clipboardManager.favorites);
+    final snippets = _visibleSnippets;
     final isHistoryTab = _currentTabIndex == 0;
-    final visibleItems = isHistoryTab ? historyItems : favoriteItems;
-    final visibleCount = visibleItems.length;
-    final hasItems = visibleCount > 0;
+    final isFavoritesTab = _currentTabIndex == 1;
+    final visibleCount = _isSnippetsTab
+        ? snippets.length
+        : (isHistoryTab ? historyItems : favoriteItems).length;
+    final hasClipboardItems =
+        (isHistoryTab && historyItems.isNotEmpty) ||
+        (isFavoritesTab && favoriteItems.isNotEmpty);
 
     if (_selectedIndex >= visibleCount && visibleCount > 0) {
       _selectedIndex = visibleCount - 1;
@@ -403,11 +461,27 @@ class _MainWindowState extends State<MainWindow>
                             ],
                           ),
                         ),
+                        Tab(
+                          height: 40,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _currentTabIndex == 2
+                                    ? Icons.code
+                                    : Icons.code_outlined,
+                                size: 15,
+                              ),
+                              const SizedBox(width: 6),
+                              const Text('Сниппеты'),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                if (hasItems)
+                if (hasClipboardItems)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
                     child: Align(
@@ -431,6 +505,28 @@ class _MainWindowState extends State<MainWindow>
                       ),
                     ),
                   ),
+                if (_isSnippetsTab)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () => _editSnippet(),
+                        icon: Icon(Icons.add, size: 14, color: palette.accent),
+                        label: Text(
+                          'Добавить',
+                          style:
+                              TextStyle(fontSize: 11, color: palette.accent),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
@@ -440,6 +536,7 @@ class _MainWindowState extends State<MainWindow>
                         scrollController: _historyScrollController,
                       ),
                       _buildFavoritesTab(favoriteItems),
+                      _buildSnippetsTab(snippets),
                     ],
                   ),
                 ),
@@ -483,6 +580,157 @@ class _MainWindowState extends State<MainWindow>
     return _buildItemsList(
       items,
       scrollController: _favoritesScrollController,
+    );
+  }
+
+  Widget _buildSnippetsTab(List<Snippet> snippets) {
+    if (SnippetService.instance.snippets.isEmpty) {
+      return _EmptyState(
+        icon: Icons.code_outlined,
+        title: 'Пока нет сниппетов',
+        subtitle:
+            'Шаблоны с плейсхолдерами {{name}} — заполните и вставьте в один клик',
+      );
+    }
+    if (snippets.isEmpty) {
+      return _EmptyState(
+        icon: Icons.search_off,
+        title: 'Ничего не найдено для "${_searchController.text}" 🕵️',
+        subtitle: null,
+      );
+    }
+
+    final palette = context.palette;
+    return ListView.separated(
+      controller: _snippetsScrollController,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+      itemCount: snippets.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
+      itemBuilder: (context, index) {
+        final snippet = snippets[index];
+        final selected = index == _selectedIndex;
+        final placeholders = snippet.placeholders;
+        final preview = snippet.body.replaceAll(RegExp(r'\s+'), ' ').trim();
+        final shortcutLabel = index < 9 ? '${index + 1}' : null;
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _handleSnippetTap(snippet),
+            onLongPress: () => _showSnippetOptions(snippet),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(0, 10, 4, 10),
+              decoration: BoxDecoration(
+                color: selected
+                    ? palette.current.withValues(alpha: 0.55)
+                    : palette.bgElevated.withValues(alpha: 0.42),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected
+                      ? palette.accent.withValues(alpha: 0.7)
+                      : palette.line.withValues(alpha: 0.75),
+                  width: selected ? 1.4 : 1,
+                ),
+              ),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: 3.5,
+                      margin: const EdgeInsets.only(left: 2, right: 8),
+                      decoration: BoxDecoration(
+                        color: palette.accent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    if (shortcutLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Container(
+                            width: 18,
+                            height: 18,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: palette.current.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: palette.line),
+                            ),
+                            child: Text(
+                              shortcutLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontFamily: 'Menlo',
+                                fontWeight: FontWeight.w600,
+                                color: palette.mutedBright,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            snippet.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: palette.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            preview.isEmpty ? '(пусто)' : preview,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.35,
+                              fontFamily: 'Menlo',
+                              color: palette.mutedBright,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            placeholders.isEmpty
+                                ? 'без плейсхолдеров'
+                                : '${placeholders.length} {{…}}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'Menlo',
+                              color: palette.muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.more_vert,
+                        size: 18,
+                        color: palette.muted,
+                      ),
+                      onPressed: () => _showSnippetOptions(snippet),
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 28, minHeight: 28),
+                      splashRadius: 14,
+                      tooltip: 'Меню',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -544,6 +792,16 @@ class _MainWindowState extends State<MainWindow>
   }
 
   Future<void> _handleItemTap(ClipboardItem item) async {
+    await _copyItemAndClose(item);
+  }
+
+  Future<void> _copyTextAndClose(String content) async {
+    await _copyItemAndClose(
+      ClipboardItem(content: content, timestamp: DateTime.now()),
+    );
+  }
+
+  Future<void> _copyItemAndClose(ClipboardItem item) async {
     final autoPaste = AppSettings.instance.autoPasteEnabled;
 
     if (autoPaste) {
@@ -581,18 +839,185 @@ class _MainWindowState extends State<MainWindow>
           ),
         );
         await _clipboardManager.copyToClipboard(item);
+        if (!mounted) return;
+        // Let any dialog routes finish before tearing down MainWindow.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        if (!mounted) return;
         widget.onClose();
         return;
       }
     }
 
     await _clipboardManager.copyToClipboard(item);
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (!mounted) return;
     widget.onClose();
 
     if (autoPaste) {
       await Future<void>.delayed(const Duration(milliseconds: 80));
       await MacOSClipboardService.pasteToPreviousApp();
     }
+  }
+
+  Future<void> _handleSnippetTap(Snippet snippet) async {
+    final names = snippet.placeholders;
+    if (names.isEmpty) {
+      await _copyTextAndClose(snippet.render(const {}));
+      return;
+    }
+
+    final values = await _promptSnippetPlaceholders(snippet, names);
+    if (values == null || !mounted) return;
+    // showDialog completes on pop; the route still animates out briefly.
+    await Future<void>.delayed(const Duration(milliseconds: 280));
+    if (!mounted) return;
+    await _copyTextAndClose(snippet.render(values));
+  }
+
+  Future<Map<String, String>?> _promptSnippetPlaceholders(
+    Snippet snippet,
+    List<String> names,
+  ) {
+    return showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _SnippetPlaceholdersDialog(
+        title: snippet.title,
+        names: names,
+      ),
+    );
+  }
+
+  void _showSnippetOptions(Snippet snippet) {
+    final palette = context.palette;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Material(
+            color: palette.bgElevated,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading:
+                      Icon(Icons.edit_outlined, size: 20, color: palette.cyan),
+                  title: Text(
+                    'Изменить',
+                    style: TextStyle(color: palette.ink, fontSize: 14),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _editSnippet(snippet);
+                  },
+                ),
+                ListTile(
+                  leading:
+                      Icon(Icons.delete_outline, size: 20, color: palette.red),
+                  title: Text(
+                    'Удалить',
+                    style: TextStyle(fontSize: 14, color: palette.red),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _deleteSnippet(snippet);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _editSnippet([Snippet? existing]) async {
+    final result = await showDialog<({String title, String body})>(
+      context: context,
+      builder: (context) => _SnippetEditorDialog(existing: existing),
+    );
+    if (result == null || !mounted) return;
+
+    await SnippetService.instance.upsert(
+      id: existing?.id,
+      title: result.title,
+      body: result.body,
+    );
+    if (mounted) setState(() {});
+    _showSnack(existing == null ? 'Сниппет добавлен' : 'Сниппет сохранён');
+  }
+
+  Future<void> _deleteSnippet(Snippet snippet) async {
+    final palette = context.palette;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Удалить сниппет'),
+        content: Text('Удалить «${snippet.title}»? Это действие нельзя отменить.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Отмена', style: TextStyle(color: palette.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Удалить', style: TextStyle(color: palette.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await SnippetService.instance.remove(snippet.id);
+    if (mounted) setState(() {});
+    _showSnack('Сниппет удалён');
+  }
+
+  Future<void> _showTransformDialog(ClipboardItem item) async {
+    final palette = context.palette;
+    final transform = await showDialog<TextTransform>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Преобразовать'),
+          content: SizedBox(
+            width: 320,
+            height: 360,
+            child: ListView(
+              children: [
+                for (final t in TextTransform.values)
+                  ListTile(
+                    dense: true,
+                    title: Text(
+                      t.title,
+                      style: TextStyle(fontSize: 13, color: palette.ink),
+                    ),
+                    onTap: () => Navigator.pop(context, t),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Отмена', style: TextStyle(color: palette.muted)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (transform == null || !mounted) return;
+
+    final result = TextTransforms.apply(transform, item.content);
+    if (!result.ok) {
+      _showSnack(result.error ?? 'Не удалось преобразовать');
+      return;
+    }
+    await _copyTextAndClose(result.value!);
   }
 
   void _showItemOptions(ClipboardItem item) {
@@ -602,124 +1027,136 @@ class _MainWindowState extends State<MainWindow>
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          margin: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Material(
             color: palette.bgElevated,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: palette.line),
-            boxShadow: [
-              BoxShadow(
-                color: palette.shadow,
-                blurRadius: 16,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading:
-                    Icon(Icons.content_copy, size: 20, color: palette.cyan),
-                title: Text(
-                  'Копировать',
-                  style: TextStyle(color: palette.ink, fontSize: 14),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleItemTap(item);
-                },
-              ),
-              ListTile(
-                leading: Icon(
-                  item.isFavorite ? Icons.star : Icons.star_border,
-                  size: 20,
-                  color: item.isFavorite ? palette.yellow : palette.mutedBright,
-                ),
-                title: Text(
-                  item.isFavorite
-                      ? 'Убрать из избранного'
-                      : 'Добавить в избранное',
-                  style: TextStyle(color: palette.ink, fontSize: 14),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _clipboardManager.toggleFavorite(item.id);
-                  if (mounted) setState(() {});
-                },
-              ),
-              if (item.isFavorite)
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 ListTile(
-                  leading: Icon(
-                    Icons.notes_outlined,
-                    size: 20,
-                    color: palette.accentPink,
-                  ),
+                  leading: Icon(Icons.content_copy,
+                      size: 20, color: palette.cyan),
                   title: Text(
-                    item.hasComment
-                        ? 'Изменить комментарий'
-                        : 'Добавить комментарий',
+                    'Копировать',
                     style: TextStyle(color: palette.ink, fontSize: 14),
                   ),
                   onTap: () {
                     Navigator.pop(context);
-                    _editFavoriteComment(item);
+                    _handleItemTap(item);
                   },
                 ),
-              ListTile(
-                leading: Icon(
-                  item.isSensitive
-                      ? Icons.lock_open_outlined
-                      : Icons.lock_outline,
-                  size: 20,
-                  color: item.isSensitive ? palette.yellow : palette.mutedBright,
+                ListTile(
+                  leading: Icon(
+                    item.isFavorite ? Icons.star : Icons.star_border,
+                    size: 20,
+                    color:
+                        item.isFavorite ? palette.yellow : palette.mutedBright,
+                  ),
+                  title: Text(
+                    item.isFavorite
+                        ? 'Убрать из избранного'
+                        : 'Добавить в избранное',
+                    style: TextStyle(color: palette.ink, fontSize: 14),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _clipboardManager.toggleFavorite(item.id);
+                    if (mounted) setState(() {});
+                  },
                 ),
-                title: Text(
-                  item.isSensitive
-                      ? 'Снять тип secret'
-                      : 'Сделать типом secret',
-                  style: TextStyle(color: palette.ink, fontSize: 14),
+                if (item.isFavorite)
+                  ListTile(
+                    leading: Icon(
+                      Icons.notes_outlined,
+                      size: 20,
+                      color: palette.accentPink,
+                    ),
+                    title: Text(
+                      item.hasComment
+                          ? 'Изменить комментарий'
+                          : 'Добавить комментарий',
+                      style: TextStyle(color: palette.ink, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _editFavoriteComment(item);
+                    },
+                  ),
+                ListTile(
+                  leading: Icon(
+                    item.isSensitive
+                        ? Icons.lock_open_outlined
+                        : Icons.lock_outline,
+                    size: 20,
+                    color: item.isSensitive
+                        ? palette.yellow
+                        : palette.mutedBright,
+                  ),
+                  title: Text(
+                    item.isSensitive
+                        ? 'Снять тип secret'
+                        : 'Сделать типом secret',
+                    style: TextStyle(color: palette.ink, fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    item.isSensitive
+                        ? 'Показывать как обычный текст'
+                        : 'Маскировать содержимое (пароль / токен)',
+                    style: TextStyle(fontSize: 11, color: palette.muted),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    final makeSecret = !item.isSensitive;
+                    await _clipboardManager.setItemSensitive(
+                      item.id,
+                      makeSecret,
+                    );
+                    if (!mounted) return;
+                    setState(() {
+                      if (makeSecret) {
+                        _revealedSensitiveIds.remove(item.id);
+                      }
+                    });
+                    _showSnack(
+                      makeSecret
+                          ? 'Тип изменён на secret'
+                          : 'Тип secret снят',
+                    );
+                  },
                 ),
-                subtitle: Text(
-                  item.isSensitive
-                      ? 'Показывать как обычный текст'
-                      : 'Маскировать содержимое (пароль / токен)',
-                  style: TextStyle(fontSize: 11, color: palette.muted),
+                if (!item.hasImage)
+                  ListTile(
+                    leading: Icon(
+                      Icons.transform,
+                      size: 20,
+                      color: palette.accentPink,
+                    ),
+                    title: Text(
+                      'Преобразовать…',
+                      style: TextStyle(color: palette.ink, fontSize: 14),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showTransformDialog(item);
+                    },
+                  ),
+                ListTile(
+                  leading: Icon(Icons.delete_outline,
+                      size: 20, color: palette.red),
+                  title: Text(
+                    'Удалить',
+                    style: TextStyle(fontSize: 14, color: palette.red),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showDeleteConfirmation(item);
+                  },
                 ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final makeSecret = !item.isSensitive;
-                  await _clipboardManager.setItemSensitive(
-                    item.id,
-                    makeSecret,
-                  );
-                  if (!mounted) return;
-                  setState(() {
-                    if (makeSecret) {
-                      _revealedSensitiveIds.remove(item.id);
-                    }
-                  });
-                  _showSnack(
-                    makeSecret
-                        ? 'Тип изменён на secret'
-                        : 'Тип secret снят',
-                  );
-                },
-              ),
-              ListTile(
-                leading:
-                    Icon(Icons.delete_outline, size: 20, color: palette.red),
-                title: Text(
-                  'Удалить',
-                  style: TextStyle(fontSize: 14, color: palette.red),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteConfirmation(item);
-                },
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -727,63 +1164,13 @@ class _MainWindowState extends State<MainWindow>
   }
 
   Future<void> _editFavoriteComment(ClipboardItem item) async {
-    final palette = context.palette;
-    final controller = TextEditingController(text: item.comment ?? '');
-
     final result = await showDialog<String?>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Комментарий'),
-          content: SizedBox(
-            width: 360,
-            child: TextField(
-              controller: controller,
-              autofocus: true,
-              maxLines: 6,
-              minLines: 3,
-              style: TextStyle(fontSize: 13, color: palette.ink, height: 1.35),
-              decoration: InputDecoration(
-                hintText: 'Любой текст: метка, заметка, ссылка…',
-                hintStyle: TextStyle(color: palette.muted, fontSize: 13),
-                filled: true,
-                fillColor: palette.bgElevated.withValues(alpha: 0.6),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: palette.line),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: palette.line),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: palette.accent),
-                ),
-                contentPadding: const EdgeInsets.all(12),
-              ),
-            ),
-          ),
-          actions: [
-            if (item.hasComment)
-              TextButton(
-                onPressed: () => Navigator.pop(context, ''),
-                child: Text('Удалить', style: TextStyle(color: palette.red)),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Отмена', style: TextStyle(color: palette.muted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: Text('Сохранить', style: TextStyle(color: palette.accent)),
-            ),
-          ],
-        );
-      },
+      builder: (context) => _CommentEditorDialog(
+        initialText: item.comment ?? '',
+        canClear: item.hasComment,
+      ),
     );
-
-    controller.dispose();
     if (result == null || !mounted) return;
 
     await _clipboardManager.setFavoriteComment(item.id, result);
@@ -970,30 +1357,6 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-String _detectContentType(String content) {
-  final trimmed = content.trim();
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json';
-  if (RegExp(r'^https?://', caseSensitive: false).hasMatch(trimmed)) {
-    return 'url';
-  }
-  if (RegExp(r'^(git|npm|flutter|cd|ls|brew|curl|ssh)\b').hasMatch(trimmed) ||
-      trimmed.startsWith('./') ||
-      trimmed.startsWith('sudo ')) {
-    return 'shell';
-  }
-  if (trimmed.contains('function') ||
-      trimmed.contains('const ') ||
-      trimmed.contains('=>') ||
-      trimmed.contains('console.')) {
-    return 'javascript';
-  }
-  if (trimmed.contains('{') &&
-      (trimmed.contains('color:') || trimmed.contains('background'))) {
-    return 'css';
-  }
-  return 'text';
-}
-
 class _ClipboardItemTile extends StatefulWidget {
   const _ClipboardItemTile({
     required this.item,
@@ -1026,10 +1389,18 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
   Widget build(BuildContext context) {
     final palette = context.palette;
     final item = widget.item;
-    final type =
-        item.isSensitive ? 'secret' : _detectContentType(item.content);
+    final kind = detectContentType(
+      content: item.content,
+      isSensitive: item.isSensitive,
+      hasImage: item.hasImage,
+    );
+    final typeColor = AppSettings.instance.colorFor(kind);
     final highlighted = widget.selected || _hovered;
     final shortcutLabel = widget.index < 9 ? '${widget.index + 1}' : null;
+    final showThumbnail = item.hasImage &&
+        !widget.masked &&
+        item.imagePath != null &&
+        File(item.imagePath!).existsSync();
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -1050,9 +1421,9 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: widget.selected
-                    ? palette.accent.withValues(alpha: 0.7)
+                    ? typeColor.withValues(alpha: 0.75)
                     : highlighted
-                        ? palette.accent.withValues(alpha: 0.4)
+                        ? typeColor.withValues(alpha: 0.45)
                         : palette.line.withValues(alpha: 0.75),
                 width: widget.selected ? 1.4 : 1,
               ),
@@ -1065,7 +1436,7 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                     width: 3.5,
                     margin: const EdgeInsets.only(left: 2, right: 8),
                     decoration: BoxDecoration(
-                      color: palette.accent,
+                      color: typeColor,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -1092,6 +1463,47 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                               color: palette.mutedBright,
                             ),
                           ),
+                        ),
+                      ),
+                    ),
+                  if (showThumbnail)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(
+                          File(item.imagePath!),
+                          width: 40,
+                          height: 40,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                            width: 40,
+                            height: 40,
+                            color: palette.current,
+                            child: Icon(
+                              Icons.image_outlined,
+                              size: 18,
+                              color: palette.muted,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (item.hasImage && widget.masked)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: palette.current,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: palette.line),
+                        ),
+                        child: Icon(
+                          Icons.hide_image_outlined,
+                          size: 18,
+                          color: palette.muted,
                         ),
                       ),
                     ),
@@ -1144,15 +1556,15 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
                                 vertical: 1,
                               ),
                               decoration: BoxDecoration(
-                                color: palette.accent.withValues(alpha: 0.12),
+                                color: typeColor.withValues(alpha: 0.16),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                type,
+                                kind.badge,
                                 style: TextStyle(
                                   fontSize: 10.5,
                                   fontFamily: 'Menlo',
-                                  color: palette.accent.withValues(alpha: 0.9),
+                                  color: typeColor,
                                 ),
                               ),
                             ),
@@ -1219,6 +1631,295 @@ class _ClipboardItemTileState extends State<_ClipboardItemTile> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SnippetPlaceholdersDialog extends StatefulWidget {
+  const _SnippetPlaceholdersDialog({
+    required this.title,
+    required this.names,
+  });
+
+  final String title;
+  final List<String> names;
+
+  @override
+  State<_SnippetPlaceholdersDialog> createState() =>
+      _SnippetPlaceholdersDialogState();
+}
+
+class _SnippetPlaceholdersDialogState extends State<_SnippetPlaceholdersDialog> {
+  late final Map<String, TextEditingController> _controllers = {
+    for (final name in widget.names) name: TextEditingController(),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SizedBox(
+        width: 360,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final name in widget.names) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '{{$name}}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Menlo',
+                      color: palette.muted,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                TextField(
+                  controller: _controllers[name],
+                  autofocus: name == widget.names.first,
+                  style: TextStyle(fontSize: 13, color: palette.ink),
+                  decoration: InputDecoration(
+                    hintText: name,
+                    hintStyle: TextStyle(color: palette.muted, fontSize: 13),
+                    filled: true,
+                    fillColor: palette.bgElevated.withValues(alpha: 0.6),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: palette.line),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: palette.line),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide(color: palette.accent),
+                    ),
+                    contentPadding: const EdgeInsets.all(10),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: TextStyle(color: palette.muted)),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context, {
+              for (final e in _controllers.entries) e.key: e.value.text,
+            });
+          },
+          child: Text('Вставить', style: TextStyle(color: palette.accent)),
+        ),
+      ],
+    );
+  }
+}
+
+class _SnippetEditorDialog extends StatefulWidget {
+  const _SnippetEditorDialog({this.existing});
+
+  final Snippet? existing;
+
+  @override
+  State<_SnippetEditorDialog> createState() => _SnippetEditorDialogState();
+}
+
+class _SnippetEditorDialogState extends State<_SnippetEditorDialog> {
+  late final TextEditingController _titleController =
+      TextEditingController(text: widget.existing?.title ?? '');
+  late final TextEditingController _bodyController =
+      TextEditingController(text: widget.existing?.body ?? '');
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _bodyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return AlertDialog(
+      title: Text(
+        widget.existing == null ? 'Новый сниппет' : 'Изменить сниппет',
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _titleController,
+              autofocus: true,
+              style: TextStyle(fontSize: 13, color: palette.ink),
+              decoration: InputDecoration(
+                labelText: 'Название',
+                labelStyle: TextStyle(color: palette.muted, fontSize: 12),
+                filled: true,
+                fillColor: palette.bgElevated.withValues(alpha: 0.6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.accent),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _bodyController,
+              maxLines: 8,
+              minLines: 4,
+              style: TextStyle(
+                fontSize: 13,
+                fontFamily: 'Menlo',
+                color: palette.ink,
+                height: 1.35,
+              ),
+              decoration: InputDecoration(
+                labelText: 'Текст',
+                labelStyle: TextStyle(color: palette.muted, fontSize: 12),
+                hintText: 'используйте {{name}}',
+                hintStyle: TextStyle(color: palette.muted, fontSize: 13),
+                alignLabelWithHint: true,
+                filled: true,
+                fillColor: palette.bgElevated.withValues(alpha: 0.6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.line),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: palette.accent),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: TextStyle(color: palette.muted)),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context, (
+              title: _titleController.text,
+              body: _bodyController.text,
+            ));
+          },
+          child: Text('Сохранить', style: TextStyle(color: palette.accent)),
+        ),
+      ],
+    );
+  }
+}
+
+class _CommentEditorDialog extends StatefulWidget {
+  const _CommentEditorDialog({
+    required this.initialText,
+    required this.canClear,
+  });
+
+  final String initialText;
+  final bool canClear;
+
+  @override
+  State<_CommentEditorDialog> createState() => _CommentEditorDialogState();
+}
+
+class _CommentEditorDialogState extends State<_CommentEditorDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialText);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return AlertDialog(
+      title: const Text('Комментарий'),
+      content: SizedBox(
+        width: 360,
+        child: TextField(
+          controller: _controller,
+          autofocus: true,
+          maxLines: 6,
+          minLines: 3,
+          style: TextStyle(fontSize: 13, color: palette.ink, height: 1.35),
+          decoration: InputDecoration(
+            hintText: 'Любой текст: метка, заметка, ссылка…',
+            hintStyle: TextStyle(color: palette.muted, fontSize: 13),
+            filled: true,
+            fillColor: palette.bgElevated.withValues(alpha: 0.6),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: palette.line),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: palette.line),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: palette.accent),
+            ),
+            contentPadding: const EdgeInsets.all(12),
+          ),
+        ),
+      ),
+      actions: [
+        if (widget.canClear)
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            child: Text('Удалить', style: TextStyle(color: palette.red)),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('Отмена', style: TextStyle(color: palette.muted)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: Text('Сохранить', style: TextStyle(color: palette.accent)),
+        ),
+      ],
     );
   }
 }

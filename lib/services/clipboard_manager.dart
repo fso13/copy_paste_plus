@@ -54,11 +54,16 @@ class ClipboardManager {
         (payload) async {
           if (!payload.isEmpty && payload.content != _lastContent) {
             print('Clipboard change detected: ${payload.content}');
-            _lastContent = payload.content;
+            _lastContent = payload.content.isNotEmpty
+                ? payload.content
+                : (payload.imagePath ?? '');
             await addItem(
-              content: payload.content,
+              content: payload.content.isEmpty && payload.hasImage
+                  ? '[image]'
+                  : payload.content,
               html: payload.html,
               rtf: payload.rtf,
+              imagePath: payload.imagePath,
               sourceBundleId: payload.sourceBundleId,
               sourceAppName: payload.sourceAppName,
             );
@@ -101,11 +106,16 @@ class ClipboardManager {
         final payload = await MacOSClipboardService.getClipboardContent();
         if (!payload.isEmpty && payload.content != _lastContent) {
           print('Clipboard change detected: ${payload.content}');
-          _lastContent = payload.content;
+          _lastContent = payload.content.isNotEmpty
+              ? payload.content
+              : (payload.imagePath ?? '');
           await addItem(
-            content: payload.content,
+            content: payload.content.isEmpty && payload.hasImage
+                ? '[image]'
+                : payload.content,
             html: payload.html,
             rtf: payload.rtf,
+            imagePath: payload.imagePath,
             sourceBundleId: payload.sourceBundleId,
             sourceAppName: payload.sourceAppName,
           );
@@ -139,10 +149,11 @@ class ClipboardManager {
     required String content,
     String? html,
     String? rtf,
+    String? imagePath,
     String? sourceBundleId,
     String? sourceAppName,
   }) async {
-    if (content.isEmpty) return;
+    if (content.isEmpty && (imagePath == null || imagePath.isEmpty)) return;
 
     final settings = AppSettings.instance;
     if (settings.isIgnored(sourceBundleId)) {
@@ -150,17 +161,24 @@ class ClipboardManager {
       return;
     }
 
-    if (_items.isNotEmpty && _items.first.content == content) {
-      // Refresh rich formats if we previously stored plain-only.
+    if (_items.isNotEmpty &&
+        _items.first.content == content &&
+        (_items.first.imagePath ?? '') == (imagePath ?? '')) {
+      // Refresh rich formats / image if we previously stored plain-only.
       final first = _items.first;
-      if (!first.hasRichText &&
+      final enrichRich = !first.hasRichText &&
           ((html != null && html.isNotEmpty) ||
-              (rtf != null && rtf.isNotEmpty))) {
+              (rtf != null && rtf.isNotEmpty));
+      final enrichImage = !first.hasImage &&
+          imagePath != null &&
+          imagePath.isNotEmpty;
+      if (enrichRich || enrichImage) {
         _items[0] = ClipboardItem(
           id: first.id,
           content: content,
-          html: html,
-          rtf: rtf,
+          html: html ?? first.html,
+          rtf: rtf ?? first.rtf,
+          imagePath: imagePath ?? first.imagePath,
           timestamp: first.timestamp,
           isFavorite: first.isFavorite,
           comment: first.comment,
@@ -185,6 +203,7 @@ class ClipboardManager {
       content: content,
       html: html,
       rtf: rtf,
+      imagePath: imagePath,
       timestamp: DateTime.now(),
       sourceBundleId: sourceBundleId,
       sourceAppName: sourceAppName,
@@ -201,7 +220,7 @@ class ClipboardManager {
     refreshStreams();
 
     print(
-      'Item added to history (rich=${newItem.hasRichText}). Total: ${_items.length}',
+      'Item added to history (rich=${newItem.hasRichText} image=${newItem.hasImage}). Total: ${_items.length}',
     );
   }
 
@@ -245,17 +264,22 @@ class ClipboardManager {
   Future<void> _saveData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final encrypt = AppSettings.instance.encryptionEnabled;
 
-      final itemsData =
-          _items.map((item) => jsonEncode(item.toJson())).toList();
+      final itemsData = <String>[];
+      for (final item in _items) {
+        itemsData.add(await _encodeStoredItem(item, encrypt: encrypt));
+      }
       await prefs.setStringList('clipboard_items', itemsData);
 
-      final favoritesData =
-          _favorites.map((item) => jsonEncode(item.toJson())).toList();
+      final favoritesData = <String>[];
+      for (final item in _favorites) {
+        favoritesData.add(await _encodeStoredItem(item, encrypt: encrypt));
+      }
       await prefs.setStringList('favorites', favoritesData);
       await prefs.setInt('max_items', _maxItems);
 
-      print('Data saved successfully');
+      print('Data saved successfully (encrypt=$encrypt)');
     } catch (e) {
       print('Error saving data: $e');
     }
@@ -268,14 +292,14 @@ class ClipboardManager {
       final itemsData = prefs.getStringList('clipboard_items') ?? [];
       _items.clear();
       for (final itemStr in itemsData) {
-        final item = _parseStoredItem(itemStr);
+        final item = await _parseStoredItem(itemStr);
         if (item != null) _items.add(item);
       }
 
       final favoritesData = prefs.getStringList('favorites') ?? [];
       _favorites.clear();
       for (final favoriteStr in favoritesData) {
-        final item = _parseStoredItem(favoriteStr);
+        final item = await _parseStoredItem(favoriteStr);
         if (item != null) _favorites.add(item);
       }
 
@@ -291,17 +315,44 @@ class ClipboardManager {
     }
   }
 
-  /// Supports JSON (current) and legacy `id|content|ts|fav` pipe format.
-  ClipboardItem? _parseStoredItem(String raw) {
+  static const _encPrefix = 'cpp1:';
+
+  Future<String> _encodeStoredItem(
+    ClipboardItem item, {
+    required bool encrypt,
+  }) async {
+    final json = jsonEncode(item.toJson());
+    if (!encrypt) return json;
+    final result = await MacOSClipboardService.encryptString(json);
+    if (!result.ok || result.text == null) {
+      print('Encrypt failed, storing plaintext: ${result.error}');
+      return json;
+    }
+    return '$_encPrefix${result.text}';
+  }
+
+  /// Supports JSON (current), encrypted `cpp1:…`, and legacy `id|content|ts|fav`.
+  Future<ClipboardItem?> _parseStoredItem(String raw) async {
     try {
-      final trimmed = raw.trimLeft();
+      var payload = raw;
+      if (raw.startsWith(_encPrefix)) {
+        final cipher = raw.substring(_encPrefix.length);
+        final decrypted = await MacOSClipboardService.decryptString(cipher);
+        if (!decrypted.ok || decrypted.text == null) {
+          print('Decrypt failed: ${decrypted.error}');
+          return null;
+        }
+        payload = decrypted.text!;
+      }
+
+      final trimmed = payload.trimLeft();
       if (trimmed.startsWith('{')) {
         return ClipboardItem.fromJson(
-          jsonDecode(raw) as Map<String, dynamic>,
+          jsonDecode(payload) as Map<String, dynamic>,
         );
       }
 
-      final parts = raw.split('|');
+      final parts = payload.split('|');
       if (parts.length == 4) {
         return ClipboardItem(
           id: parts[0],
@@ -316,19 +367,33 @@ class ClipboardManager {
     return null;
   }
 
+  /// Re-persists history after toggling encryption on/off.
+  Future<void> repersistWithCurrentEncryption() async {
+    await _saveData();
+  }
+
   Future<void> copyToClipboard(ClipboardItem item) async {
     stopMonitoring();
 
     try {
       print(
-        'Copying to clipboard: ${item.preview} (rich=${item.hasRichText})',
+        'Copying to clipboard: ${item.preview} (rich=${item.hasRichText} image=${item.hasImage})',
       );
 
-      final success = await MacOSClipboardService.setClipboardContent(
-        content: item.content,
-        html: item.html,
-        rtf: item.rtf,
-      );
+      bool success;
+      if (item.hasImage &&
+          (item.content.isEmpty || item.content == '[image]')) {
+        success = await MacOSClipboardService.setClipboardImage(item.imagePath!);
+      } else {
+        success = await MacOSClipboardService.setClipboardContent(
+          content: item.content,
+          html: item.html,
+          rtf: item.rtf,
+        );
+        if (success && item.hasImage) {
+          // Prefer text when both exist; image stays on disk for later.
+        }
+      }
 
       if (success) {
         _lastContent = item.content;

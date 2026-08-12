@@ -18,6 +18,10 @@ class AppConstants {
   static String get githubReleasesPageUrl =>
       '$githubRepoUrl/releases/latest';
 
+  /// Public docs site (GitHub Pages).
+  static String get docsSiteUrl =>
+      'https://$githubOwner.github.io/$githubRepo/';
+
   /// How often to poll GitHub for a newer release.
   static const Duration updateCheckInterval = Duration(hours: 12);
 

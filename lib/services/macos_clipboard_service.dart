@@ -6,6 +6,7 @@ class ClipboardPayload {
     required this.content,
     this.html,
     this.rtf,
+    this.imagePath,
     this.sourceBundleId,
     this.sourceAppName,
   });
@@ -13,13 +14,16 @@ class ClipboardPayload {
   final String content;
   final String? html;
   final String? rtf;
+  final String? imagePath;
   final String? sourceBundleId;
   final String? sourceAppName;
 
   bool get hasRichText =>
       (html != null && html!.isNotEmpty) || (rtf != null && rtf!.isNotEmpty);
 
-  bool get isEmpty => content.isEmpty;
+  bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
+
+  bool get isEmpty => content.isEmpty && !hasImage;
 
   factory ClipboardPayload.fromMap(dynamic raw) {
     if (raw is String) {
@@ -31,6 +35,7 @@ class ClipboardPayload {
         content: map['content']?.toString() ?? '',
         html: _optionalString(map['html']),
         rtf: _optionalString(map['rtf']),
+        imagePath: _optionalString(map['imagePath']),
         sourceBundleId: _optionalString(map['sourceBundleId']),
         sourceAppName: _optionalString(map['sourceAppName']),
       );
@@ -42,6 +47,7 @@ class ClipboardPayload {
         'content': content,
         if (html != null && html!.isNotEmpty) 'html': html,
         if (rtf != null && rtf!.isNotEmpty) 'rtf': rtf,
+        if (imagePath != null && imagePath!.isNotEmpty) 'imagePath': imagePath,
         if (sourceBundleId != null && sourceBundleId!.isNotEmpty)
           'sourceBundleId': sourceBundleId,
         if (sourceAppName != null && sourceAppName!.isNotEmpty)
@@ -61,12 +67,14 @@ class NativeResult {
     this.enabled,
     this.supported,
     this.error,
+    this.text,
   });
 
   final bool ok;
   final bool? enabled;
   final bool? supported;
   final String? error;
+  final String? text;
 
   factory NativeResult.fromMap(dynamic raw) {
     if (raw is! Map) {
@@ -78,6 +86,7 @@ class NativeResult {
       enabled: map['enabled'] is bool ? map['enabled'] as bool : null,
       supported: map['supported'] is bool ? map['supported'] as bool : null,
       error: map['error']?.toString(),
+      text: map['text']?.toString(),
     );
   }
 }
@@ -254,6 +263,43 @@ class MacOSClipboardService {
     } on PlatformException catch (e) {
       print('Failed to list running apps: ${e.message}');
       return const [];
+    }
+  }
+
+  static Future<NativeResult> encryptString(String text) async {
+    try {
+      final result = await _channel.invokeMethod(
+        'encryptString',
+        {'text': text},
+      );
+      return NativeResult.fromMap(result);
+    } on PlatformException catch (e) {
+      return NativeResult(ok: false, error: e.message);
+    }
+  }
+
+  static Future<NativeResult> decryptString(String text) async {
+    try {
+      final result = await _channel.invokeMethod(
+        'decryptString',
+        {'text': text},
+      );
+      return NativeResult.fromMap(result);
+    } on PlatformException catch (e) {
+      return NativeResult(ok: false, error: e.message);
+    }
+  }
+
+  static Future<bool> setClipboardImage(String path) async {
+    try {
+      final result = await _channel.invokeMethod(
+        'setClipboardImage',
+        {'path': path},
+      );
+      return result == true;
+    } on PlatformException catch (e) {
+      print('Failed to set clipboard image: ${e.message}');
+      return false;
     }
   }
 

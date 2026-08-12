@@ -7,6 +7,8 @@ class ClipboardItem {
   final String? html;
   /// RTF from the source pasteboard (preferred by Word / rich editors).
   final String? rtf;
+  /// Absolute path to a persisted PNG screenshot / image.
+  final String? imagePath;
   final DateTime timestamp;
   bool isFavorite;
   /// Freeform note for favorites (shown under content).
@@ -21,6 +23,7 @@ class ClipboardItem {
     required this.content,
     this.html,
     this.rtf,
+    this.imagePath,
     required this.timestamp,
     this.isFavorite = false,
     this.comment,
@@ -32,9 +35,14 @@ class ClipboardItem {
   bool get hasRichText =>
       (html != null && html!.isNotEmpty) || (rtf != null && rtf!.isNotEmpty);
 
+  bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
+
   bool get hasComment => comment != null && comment!.trim().isNotEmpty;
 
   String get preview {
+    if (hasImage && (content.isEmpty || content == '[image]')) {
+      return 'Изображение';
+    }
     const maxLength = 80;
     if (content.length <= maxLength) return content;
     return '${content.substring(0, maxLength)}...';
@@ -58,6 +66,7 @@ class ClipboardItem {
         'content': content,
         if (html != null && html!.isNotEmpty) 'html': html,
         if (rtf != null && rtf!.isNotEmpty) 'rtf': rtf,
+        if (imagePath != null && imagePath!.isNotEmpty) 'imagePath': imagePath,
         'timestamp': timestamp.toIso8601String(),
         'isFavorite': isFavorite,
         if (hasComment) 'comment': comment,
@@ -75,6 +84,7 @@ class ClipboardItem {
         content: json['content']?.toString() ?? '',
         html: _optionalString(json['html']),
         rtf: _optionalString(json['rtf']),
+        imagePath: _optionalString(json['imagePath']),
         timestamp: DateTime.parse(
           json['timestamp']?.toString() ?? DateTime.now().toIso8601String(),
         ),

@@ -29,12 +29,12 @@ jobs:
 
       - name: Commit if changed
         run: |
-          if git diff --quiet -- docs/CHANGELOG.md; then
-            echo "docs/CHANGELOG.md already up to date"
+          if git diff --quiet -- docs/CHANGELOG.md docs/changelog-data.js; then
+            echo "docs changelog already up to date"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/CHANGELOG.md
+          git add docs/CHANGELOG.md docs/changelog-data.js
           git commit -m "docs: sync CHANGELOG to GitHub Pages"
           git push

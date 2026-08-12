@@ -51,6 +51,9 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
   final UpdateService _updateService = updateService;
 
   bool _showWindow = false;
+  /// Keeps the Flutter tree alive briefly after the OS window is hidden so
+  /// dialog/sheet exit animations can finish without disposed-controller errors.
+  bool _mountWindow = false;
   bool _showSettings = false;
   bool _updatePromptShown = false;
 
@@ -96,6 +99,7 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
 
       setState(() {
         _showWindow = true;
+        _mountWindow = true;
         _showSettings = false;
       });
       await windowManager.show();
@@ -115,25 +119,32 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
   }
 
   Future<void> _toggleWindow() async {
-    final willShow = !_showWindow;
-    if (willShow) {
+    if (!_showWindow) {
       // Capture before we steal focus — needed for auto-paste.
       await MacOSClipboardService.captureFrontmostApp();
-    }
-
-    setState(() {
-      _showWindow = willShow;
-      _showSettings = false;
-    });
-
-    if (_showWindow) {
+      setState(() {
+        _showWindow = true;
+        _mountWindow = true;
+        _showSettings = false;
+      });
       await windowManager.show();
       await windowManager.focus();
       await _clipboardManager.ensureControllersActive();
       _clipboardManager.refreshStreams();
-    } else {
-      await windowManager.hide();
+      return;
     }
+
+    // Hide the OS window immediately, but keep the Flutter tree mounted until
+    // any dialog/sheet exit animations finish — otherwise TextFields can rebuild
+    // against disposed controllers (and GlobalKeys collide).
+    setState(() {
+      _showWindow = false;
+      _showSettings = false;
+    });
+    await windowManager.hide();
+    await Future<void>.delayed(const Duration(milliseconds: 320));
+    if (!mounted || _showWindow) return;
+    setState(() => _mountWindow = false);
   }
 
   Future<void> _openSettings() async {
@@ -143,6 +154,7 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
     setState(() {
       _showSettings = true;
       _showWindow = true;
+      _mountWindow = true;
     });
     await windowManager.show();
     await windowManager.focus();
@@ -162,7 +174,7 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: _themeService.themeMode,
-      home: _showWindow
+      home: _mountWindow
           ? (_showSettings
               ? SettingsWindow(onClose: _closeSettings)
               : MainWindow(

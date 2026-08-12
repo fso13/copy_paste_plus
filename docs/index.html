@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="CopyPastePlus — менеджер буфера обмена для macOS: история, избранное, стили HTML/RTF, хоткей и трей." />
+  <meta name="description" content="CopyPastePlus — менеджер буфера обмена для macOS: история, избранное, авто-вставка, secret, хоткей и трей." />
   <meta name="theme-color" content="#282a36" id="theme-color-meta" />
   <meta property="og:title" content="CopyPastePlus" />
-  <meta property="og:description" content="Менеджер буфера обмена для macOS с историей, избранным и сохранением стилей." />
+  <meta property="og:description" content="Менеджер буфера обмена для macOS с историей, избранным, авто-вставкой и маскировкой secret." />
   <meta property="og:image" content="screenshots/app-icon.png" />
   <title>CopyPastePlus — clipboard manager for macOS</title>
   <script>
@@ -59,8 +59,8 @@
           CopyPaste<span class="hero-plus">Plus</span>
         </h1>
         <p class="hero-lead">
-          История копирований, избранное и сохранение стилей — быстрый буфер обмена
-          прямо из меню-бара.
+          История копирований, избранное, сниппеты, авто-вставка и secret —
+          быстрый буфер обмена прямо из меню-бара.
         </p>
         <p class="hero-status" aria-live="polite">
           <span class="status-dot" aria-hidden="true"></span>
@@ -144,6 +144,56 @@
         </li>
         <li class="job reveal">
           <div class="job-meta">
+            <span class="job-role">Snippets</span>
+            <time>&#123;&#123;name&#125;&#125;</time>
+          </div>
+          <div class="job-body">
+            <h3>Сниппеты и трансформации</h3>
+            <p>Шаблоны с плейсхолдерами, преобразования JSON/Base64/slug и картинки в истории. Опциональное шифрование на диске.</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Paste</span>
+            <time>⌘V · 1–9</time>
+          </div>
+          <div class="job-body">
+            <h3>Авто-вставка и клавиатура</h3>
+            <p>Опциональная вставка в предыдущее приложение, навигация стрелками и быстрый выбор цифрами 1–9. Автозапуск через Login Items.</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Privacy</span>
+            <time>secret · ignore</time>
+          </div>
+          <div class="job-body">
+            <h3>Приватность</h3>
+            <p>Игнор приложений (парольные менеджеры по умолчанию), маскировка secret и ручная смена типа в меню элемента. Комментарий остаётся видимым.</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Colors</span>
+            <time>types · badges</time>
+          </div>
+          <div class="job-body">
+            <h3>Цвета типов</h3>
+            <p>Полоска и бейдж для text / url / json / shell / secret и др. — цвета настраиваются в настройках (палитра или HEX).</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
+            <span class="job-role">Help</span>
+            <time>settings · docs</time>
+          </div>
+          <div class="job-body">
+            <h3>Справка в приложении</h3>
+            <p>Разделы про сниппеты, быстрый выбор 1–9, secret, шифрование и авто-вставку — прямо в настройках, плюс ссылка на сайт.</p>
+          </div>
+        </li>
+        <li class="job reveal">
+          <div class="job-meta">
             <span class="job-role">Desktop</span>
             <time>трей · хоткей</time>
           </div>
@@ -160,22 +210,33 @@
         <div class="section-head">
           <p class="eyebrow">Product</p>
           <h2>Как выглядит</h2>
-          <p class="section-lead">Окно истории, избранное и настройки — в том же визуальном языке, что и сайт.</p>
+          <p class="section-lead">История, избранное, сниппеты, настройки и встроенная справка — в том же визуальном языке, что и сайт.</p>
         </div>
 
         <figure class="shot shot-hero reveal">
-          <img src="screenshots/main-history.png" alt="Окно истории буфера обмена CopyPastePlus" width="720" height="900" loading="lazy" />
-          <figcaption>История буфера — поиск, вкладки и список фрагментов</figcaption>
+          <img src="screenshots/main-history.png" alt="Окно истории буфера обмена CopyPastePlus" width="800" height="1200" loading="lazy" />
+          <figcaption>История буфера — поиск, вкладки и список фрагментов (в т.ч. secret)</figcaption>
         </figure>
 
         <div class="shot-row">
           <figure class="shot reveal">
-            <img src="screenshots/favorites.png" alt="Вкладка избранного" width="480" height="600" loading="lazy" />
+            <img src="screenshots/favorites.png" alt="Вкладка избранного" width="800" height="1200" loading="lazy" />
             <figcaption>Избранное</figcaption>
           </figure>
           <figure class="shot reveal">
-            <img src="screenshots/settings.png" alt="Окно настроек" width="480" height="600" loading="lazy" />
-            <figcaption>Настройки</figcaption>
+            <img src="screenshots/snippets.png" alt="Вкладка сниппетов" width="800" height="1200" loading="lazy" />
+            <figcaption>Сниппеты с {{name}}</figcaption>
+          </figure>
+        </div>
+
+        <div class="shot-row">
+          <figure class="shot reveal">
+            <img src="screenshots/settings.png" alt="Окно настроек" width="800" height="1200" loading="lazy" />
+            <figcaption>Настройки — вставка, приватность, цвета типов, справка</figcaption>
+          </figure>
+          <figure class="shot reveal">
+            <img src="screenshots/help.png" alt="Встроенная справка" width="800" height="1200" loading="lazy" />
+            <figcaption>Справка в приложении</figcaption>
           </figure>
         </div>
       </div>
@@ -205,7 +266,7 @@
           <span class="step-num">03</span>
           <div>
             <h3>Разрешите доступ</h3>
-            <p>При первом запуске macOS может попросить доступ в «Системные настройки → Конфиденциальность».</p>
+            <p>При первом запуске macOS может попросить доступ в «Системные настройки → Конфиденциальность». Для авто-вставки включите <strong>Универсальный доступ</strong>.</p>
           </div>
         </li>
       </ol>
@@ -242,8 +303,13 @@
       </div>
       <ul class="contacts reveal">
         <li><span>Показать / скрыть</span><strong>⌘⇧C или иконка в меню-баре</strong></li>
-        <li><span>Вставить из истории</span><strong>Клик по элементу</strong></li>
+        <li><span>Вставить из истории</span><strong>Клик / Enter / 1–9</strong></li>
+        <li><span>Навигация</span><strong>↑ / ↓</strong></li>
         <li><span>В избранное</span><strong>★</strong></li>
+        <li><span>Сниппет</span><strong>вкладка «Сниппеты»</strong></li>
+        <li><span>Тип secret</span><strong>⋮ → сделать secret</strong></li>
+        <li><span>Справка</span><strong>Настройки → Справка</strong></li>
+        <li><span>Цвета типов</span><strong>Настройки → Цвета типов</strong></li>
         <li><span>Меню элемента</span><strong>⋮</strong></li>
         <li><span>Фокус поиска</span><strong>⌘F</strong></li>
       </ul>
@@ -280,6 +346,7 @@
     <span class="bat b2">🦇</span>
   </div>
 
+  <script src="changelog-data.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

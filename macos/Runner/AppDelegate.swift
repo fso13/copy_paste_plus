@@ -2,6 +2,8 @@ import Cocoa
 import FlutterMacOS
 import ServiceManagement
 import ApplicationServices
+import CryptoKit
+import Security
 
 @main
 class AppDelegate: FlutterAppDelegate {
@@ -93,6 +95,29 @@ class AppDelegate: FlutterAppDelegate {
             }
         case "listRunningApps":
             result(listRunningApps())
+        case "encryptString":
+            if let args = call.arguments as? [String: Any],
+               let plain = args["text"] as? String {
+                result(encryptString(plain))
+            } else {
+                result(["ok": false, "error": "Invalid arguments"])
+            }
+        case "decryptString":
+            if let args = call.arguments as? [String: Any],
+               let cipher = args["text"] as? String {
+                result(decryptString(cipher))
+            } else {
+                result(["ok": false, "error": "Invalid arguments"])
+            }
+        case "setClipboardImage":
+            if let args = call.arguments as? [String: Any],
+               let path = args["path"] as? String {
+                result(setClipboardImage(path: path))
+            } else {
+                result(false)
+            }
+        case "imagesDirectory":
+            result(imagesDirectoryPath())
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -291,6 +316,14 @@ class AppDelegate: FlutterAppDelegate {
             payload["rtf"] = rtf
         }
         
+        // Image (PNG) — store under Application Support and pass path.
+        if let imagePath = persistPasteboardImageIfNeeded() {
+            payload["imagePath"] = imagePath
+            if (payload["content"] as? String ?? "").isEmpty {
+                payload["content"] = "[image]"
+            }
+        }
+        
         // Source app ≈ frontmost at change time (skip ourselves).
         if let app = NSWorkspace.shared.frontmostApplication,
            let bid = app.bundleIdentifier,
@@ -301,7 +334,7 @@ class AppDelegate: FlutterAppDelegate {
             }
         }
         
-        print("Native: Clipboard payload plain=\((payload["content"] as? String)?.count ?? 0) html=\((payload["html"] as? String)?.count ?? 0) rtf=\((payload["rtf"] as? String)?.count ?? 0)")
+        print("Native: Clipboard payload plain=\((payload["content"] as? String)?.count ?? 0) html=\((payload["html"] as? String)?.count ?? 0) rtf=\((payload["rtf"] as? String)?.count ?? 0) image=\(payload["imagePath"] != nil)")
         return payload
     }
     
@@ -414,10 +447,128 @@ class AppDelegate: FlutterAppDelegate {
             
             let payload = getClipboardPayload()
             let content = payload["content"] as? String ?? ""
-            if !content.isEmpty {
+            let hasImage = (payload["imagePath"] as? String)?.isEmpty == false
+            if !content.isEmpty || hasImage {
                 eventSink?(payload)
-                print("Native: Clipboard changed: '\(content.prefix(80))'")
+                print("Native: Clipboard changed: '\(content.prefix(80))' image=\(hasImage)")
             }
+        }
+    }
+    
+    // MARK: - Images
+    
+    private func imagesDirectoryPath() -> String {
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fm.temporaryDirectory
+        let dir = base.appendingPathComponent("CopyPastePlus/images", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.path
+    }
+    
+    private func persistPasteboardImageIfNeeded() -> String? {
+        let pasteboard = NSPasteboard.general
+        guard let image = NSImage(pasteboard: pasteboard) else { return nil }
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        
+        let dir = URL(fileURLWithPath: imagesDirectoryPath(), isDirectory: true)
+        let filename = "img_\(Int(Date().timeIntervalSince1970 * 1000))_\(UUID().uuidString.prefix(8)).png"
+        let fileURL = dir.appendingPathComponent(filename)
+        do {
+            try png.write(to: fileURL)
+            return fileURL.path
+        } catch {
+            print("Native: failed to save image: \(error)")
+            return nil
+        }
+    }
+    
+    private func setClipboardImage(path: String) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        guard let image = NSImage(contentsOf: url) else { return false }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        return pasteboard.writeObjects([image])
+    }
+    
+    // MARK: - Encryption (AES-GCM + Keychain key)
+    
+    private let keychainService = "com.fso13.copyPastePlus"
+    private let keychainAccount = "history_aes_key"
+    
+    private func encryptString(_ plain: String) -> [String: Any] {
+        do {
+            let key = try loadOrCreateSymmetricKey()
+            let data = Data(plain.utf8)
+            let sealed = try AES.GCM.seal(data, using: key)
+            guard let combined = sealed.combined else {
+                return ["ok": false, "error": "seal failed"]
+            }
+            return ["ok": true, "text": combined.base64EncodedString()]
+        } catch {
+            return ["ok": false, "error": error.localizedDescription]
+        }
+    }
+    
+    private func decryptString(_ cipher: String) -> [String: Any] {
+        do {
+            let key = try loadOrCreateSymmetricKey()
+            guard let data = Data(base64Encoded: cipher) else {
+                return ["ok": false, "error": "invalid base64"]
+            }
+            let box = try AES.GCM.SealedBox(combined: data)
+            let plain = try AES.GCM.open(box, using: key)
+            guard let text = String(data: plain, encoding: .utf8) else {
+                return ["ok": false, "error": "utf8 decode failed"]
+            }
+            return ["ok": true, "text": text]
+        } catch {
+            return ["ok": false, "error": error.localizedDescription]
+        }
+    }
+    
+    private func loadOrCreateSymmetricKey() throws -> SymmetricKey {
+        if let existing = readKeychainKey() {
+            return SymmetricKey(data: existing)
+        }
+        let key = SymmetricKey(size: .bits256)
+        let raw = key.withUnsafeBytes { Data($0) }
+        try saveKeychainKey(raw)
+        return key
+    }
+    
+    private func readKeychainKey() -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data else { return nil }
+        return data
+    }
+    
+    private func saveKeychainKey(_ data: Data) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: keychainAccount,
+        ]
+        SecItemDelete(query as CFDictionary)
+        
+        var add = query
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        let status = SecItemAdd(add as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
     }
 }
