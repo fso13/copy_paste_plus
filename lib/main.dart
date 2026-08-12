@@ -72,8 +72,12 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
     await _systemTrayService.initialize();
     await _hotkeyService.initialize(_toggleWindow);
 
-    _systemTrayService.onShowWindow.listen((_) {
+    _systemTrayService.onToggleWindow.listen((_) {
       _toggleWindow();
+    });
+
+    _systemTrayService.onShowWindow.listen((_) {
+      _showMainWindow();
     });
 
     _systemTrayService.onOpenSettings.listen((_) {
@@ -120,17 +124,7 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
 
   Future<void> _toggleWindow() async {
     if (!_showWindow) {
-      // Capture before we steal focus — needed for auto-paste.
-      await MacOSClipboardService.captureFrontmostApp();
-      setState(() {
-        _showWindow = true;
-        _mountWindow = true;
-        _showSettings = false;
-      });
-      await windowManager.show();
-      await windowManager.focus();
-      await _clipboardManager.ensureControllersActive();
-      _clipboardManager.refreshStreams();
+      await _showMainWindow();
       return;
     }
 
@@ -145,6 +139,22 @@ class _ClipboardManagerAppState extends State<ClipboardManagerApp> {
     await Future<void>.delayed(const Duration(milliseconds: 320));
     if (!mounted || _showWindow) return;
     setState(() => _mountWindow = false);
+  }
+
+  Future<void> _showMainWindow() async {
+    // Capture before we steal focus — needed for auto-paste.
+    if (!_showWindow) {
+      await MacOSClipboardService.captureFrontmostApp();
+    }
+    setState(() {
+      _showWindow = true;
+      _mountWindow = true;
+      _showSettings = false;
+    });
+    await windowManager.show();
+    await windowManager.focus();
+    await _clipboardManager.ensureControllersActive();
+    _clipboardManager.refreshStreams();
   }
 
   Future<void> _openSettings() async {

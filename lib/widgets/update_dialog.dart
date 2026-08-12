@@ -27,8 +27,8 @@ Future<void> showUpdateAvailableDialog(
             const SizedBox(height: 8),
             Text(
               autoOpened
-                  ? 'Автообновление включено — можно скачать DMG.'
-                  : 'Хотите скачать новую версию?',
+                  ? 'Автообновление: откроется загрузка DMG, затем приложение закроется, чтобы можно было установить новую версию.'
+                  : 'Скачается DMG, после этого CopyPastePlus закроется — так проще заменить приложение в «Программах».',
               style: TextStyle(color: palette.muted, fontSize: 13, height: 1.4),
             ),
           ],
@@ -47,10 +47,13 @@ Future<void> showUpdateAvailableDialog(
           ),
           TextButton(
             onPressed: () async {
-              await updateService.openUpdate(release);
               if (context.mounted) Navigator.pop(context);
+              await updateService.openUpdate(release);
             },
-            child: Text('Скачать', style: TextStyle(color: palette.accent)),
+            child: Text(
+              'Скачать и закрыть',
+              style: TextStyle(color: palette.accent),
+            ),
           ),
         ],
       );

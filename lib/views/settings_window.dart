@@ -7,6 +7,7 @@ import 'package:copy_paste_plus/services/macos_clipboard_service.dart';
 import 'package:copy_paste_plus/services/theme_service.dart';
 import 'package:copy_paste_plus/services/update_service.dart';
 import 'package:copy_paste_plus/theme/app_palette.dart';
+import 'package:copy_paste_plus/utils/app_exit.dart';
 import 'package:copy_paste_plus/utils/constants.dart';
 import 'package:copy_paste_plus/views/pong_game.dart';
 import 'package:copy_paste_plus/widgets/app_panel.dart';
@@ -18,8 +19,6 @@ import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:window_manager/window_manager.dart';
-import 'dart:io';
 
 class SettingsWindow extends StatefulWidget {
   final VoidCallback onClose;
@@ -504,13 +503,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
     );
 
     if (confirmed != true) return;
-
-    try {
-      await windowManager.destroy();
-    } catch (_) {
-      // Ignore — process exit is enough.
-    }
-    exit(0);
+    await quitAppCompletely();
   }
 
   Future<void> _openDocsSite() async {

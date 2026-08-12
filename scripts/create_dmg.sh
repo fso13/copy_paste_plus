@@ -53,6 +53,11 @@ fi
 cp -R "$APP_PATH" "$STAGING_DIR/${APP_NAME}.app"
 ln -sf /Applications "$STAGING_DIR/Applications"
 
+# Helper that quits the running app, then copies into /Applications.
+INSTALL_SCRIPT="$STAGING_DIR/Install.command"
+cp "$ROOT_DIR/scripts/dmg_install.command" "$INSTALL_SCRIPT"
+chmod +x "$INSTALL_SCRIPT"
+
 mkdir -p "$DIST_DIR"
 rm -f "${DIST_DIR}/${DMG_NAME}"
 
@@ -69,11 +74,12 @@ else
   create-dmg \
     --volname "$APP_NAME" \
     --window-pos 200 120 \
-    --window-size 660 400 \
-    --icon-size 128 \
-    --icon "${APP_NAME}.app" 160 180 \
+    --window-size 660 460 \
+    --icon-size 112 \
+    --icon "${APP_NAME}.app" 160 140 \
     --hide-extension "${APP_NAME}.app" \
-    --app-drop-link 480 180 \
+    --icon "Install.command" 160 320 \
+    --app-drop-link 480 140 \
     --no-internet-enable \
     "${DIST_DIR}/${DMG_NAME}" \
     "$STAGING_DIR"

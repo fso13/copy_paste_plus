@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:copy_paste_plus/utils/app_exit.dart';
 import 'package:copy_paste_plus/utils/constants.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -180,11 +181,15 @@ class UpdateService extends ChangeNotifier {
     }
   }
 
+  /// Opens the DMG / release page, then quits so the .app can be replaced.
   Future<void> openUpdate(AppRelease release) async {
     final uri = Uri.parse(release.downloadUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+    // Let the browser / Finder take focus before we tear down.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    await quitAppCompletely();
   }
 
   static String _normalizeVersion(String raw) {

@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
+import 'package:copy_paste_plus/utils/app_exit.dart';
 import 'package:system_tray/system_tray.dart';
-import 'package:window_manager/window_manager.dart';
 
 class SystemTrayService {
   final SystemTray _systemTray = SystemTray();
@@ -11,9 +10,17 @@ class SystemTrayService {
       StreamController.broadcast();
   final StreamController<void> _openSettingsController =
       StreamController.broadcast();
+  final StreamController<void> _toggleWindowController =
+      StreamController.broadcast();
 
+  /// Force-show the main window (tray menu «Показать»).
   Stream<void> get onShowWindow => _showWindowController.stream;
+
+  /// Open settings (tray menu «Настройки»).
   Stream<void> get onOpenSettings => _openSettingsController.stream;
+
+  /// Toggle show/hide (left-click on tray icon).
+  Stream<void> get onToggleWindow => _toggleWindowController.stream;
 
   Future<void> initialize() async {
     try {
@@ -25,31 +32,30 @@ class SystemTrayService {
       await _menu.buildFrom([
         MenuItemLabel(
           label: 'Показать',
-          onClicked: (menuItem) {
-            _showWindowController.add(null);
-          },
+          onClicked: (_) => _showWindowController.add(null),
         ),
         MenuItemLabel(
           label: 'Настройки',
-          onClicked: (menuItem) {
-            _openSettingsController.add(null);
-          },
+          onClicked: (_) => _openSettingsController.add(null),
         ),
         MenuSeparator(),
         MenuItemLabel(
-          label: 'Выход',
-          onClicked: (menuItem) async {
-            await windowManager.destroy();
-            exit(0);
+          label: 'Завершить',
+          onClicked: (_) async {
+            await quitAppCompletely();
           },
         ),
       ]);
 
       await _systemTray.setContextMenu(_menu);
 
+      // macOS: context menu is not shown automatically — pop it up on
+      // right-click. Left-click toggles the panel (common for menu-bar apps).
       _systemTray.registerSystemTrayEventHandler((eventName) {
-        if (eventName == 'click') {
-          _showWindowController.add(null);
+        if (eventName == kSystemTrayEventClick) {
+          _toggleWindowController.add(null);
+        } else if (eventName == kSystemTrayEventRightClick) {
+          _systemTray.popUpContextMenu();
         }
       });
 
@@ -62,5 +68,6 @@ class SystemTrayService {
   void dispose() {
     _showWindowController.close();
     _openSettingsController.close();
+    _toggleWindowController.close();
   }
 }
