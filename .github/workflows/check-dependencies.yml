@@ -1,4 +1,4 @@
-name: Check Dart Dependencies
+name: Check Flutter Dependencies
 
 on:
   schedule:
@@ -12,11 +12,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Dart
-        uses: dart-lang/setup-dart@v1
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
       - name: Get dependencies
-        run: dart pub get
+        run: flutter pub get
 
       - name: Check for outdated packages
-        run: dart pub outdated --no-color
+        run: flutter pub outdated --no-color
