@@ -1,0 +1,22 @@
+name: Check Dart Dependencies
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Запуск каждый понедельник в 9:00 UTC
+  workflow_dispatch:     # Ручной запуск во вкладке Actions
+
+jobs:
+  outdated:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+
+      - name: Get dependencies
+        run: dart pub get
+
+      - name: Check for outdated packages
+        run: dart pub outdated --no-color
